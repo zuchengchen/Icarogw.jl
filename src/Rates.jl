@@ -1,0 +1,251 @@
+module Rates
+
+using ..Cosmology
+using ..Conversions
+using ..Priors
+using SpecialFunctions: beta, gamma
+
+import ..Priors: ParameterSchema, ParameterSpec, parameter_schema, pack, unpack, logpdf
+
+export AbstractRedshiftRate,
+    PowerLawRate,
+    MadauRate,
+    MadauGammaRate,
+    BetaRate,
+    BetaLineRate,
+    CBCVanillaRate,
+    CBCMass1Rate,
+    CBCMchirpQRate,
+    SimplePowerLawPopulation,
+    materialize,
+    log_event_rate,
+    parameter_schema
+
+abstract type AbstractRedshiftRate end
+
+"""
+    PowerLawRate(gamma)
+
+Redshift evolution `ψ(z) = (1+z)^gamma`.
+"""
+struct PowerLawRate <: AbstractRedshiftRate
+    gamma::Float64
+end
+log_rate(r::PowerLawRate, z::Real) = r.gamma * log1p(z)
+
+"""
+    MadauRate(gamma, kappa, zp)
+
+Madau-Dickinson-like redshift evolution used by Python `md_rate`.
+"""
+struct MadauRate <: AbstractRedshiftRate
+    gamma::Float64
+    kappa::Float64
+    zp::Float64
+end
+function log_rate(r::MadauRate, z::Real)
+    return log1p((1 + r.zp)^(-r.gamma - r.kappa)) +
+        r.gamma * log1p(z) -
+        log1p(((1 + z) / (1 + r.zp))^(r.gamma + r.kappa))
+end
+
+"""
+    MadauGammaRate(gamma, kappa, zp, a, b, c)
+
+Madau rate plus a gamma-shaped perturbation in log-rate.
+"""
+struct MadauGammaRate <: AbstractRedshiftRate
+    gamma::Float64
+    kappa::Float64
+    zp::Float64
+    a::Float64
+    b::Float64
+    c::Float64
+end
+function log_rate(r::MadauGammaRate, z::Real)
+    md = log_rate(MadauRate(r.gamma, r.kappa, r.zp), z)
+    gamma_pdf = z < 0 ? 0.0 : r.b^r.a * z^(r.a - 1) * exp(-r.b * z) / gamma(r.a)
+    return md + r.c * gamma_pdf
+end
+
+"""
+    BetaRate(a, b, c)
+
+Rate whose log-evolution is `c * beta_pdf(z; a, b)`. It is mainly useful when
+redshift has been scaled to `[0, 1]`, matching the Python behavior.
+"""
+struct BetaRate <: AbstractRedshiftRate
+    a::Float64
+    b::Float64
+    c::Float64
+end
+function log_rate(r::BetaRate, z::Real)
+    0 <= z <= 1 || return 0.0
+    beta_pdf = z^(r.a - 1) * (1 - z)^(r.b - 1) / beta(r.a, r.b)
+    return r.c * beta_pdf
+end
+
+"""
+    BetaLineRate(a, b, c, d)
+
+Beta log-rate for `z <= d` continued by a tangent line for `z > d`.
+"""
+struct BetaLineRate <: AbstractRedshiftRate
+    a::Float64
+    b::Float64
+    c::Float64
+    d::Float64
+end
+function log_rate(r::BetaLineRate, z::Real)
+    base = BetaRate(r.a, r.b, r.c)
+    z <= r.d && return log_rate(base, z)
+    h = 1e-6
+    slope = (log_rate(base, r.d + h) - log_rate(base, r.d - h)) / (2h)
+    return slope * (z - r.d) + log_rate(base, r.d)
+end
+
+log_rate(r::AbstractRedshiftRate, z::AbstractArray) = map(v -> log_rate(r, v), z)
+
+abstract type AbstractCBCRateModel end
+
+"""
+    SimplePowerLawPopulation(cosmology; kwargs...)
+
+Concrete population model used for the vertical-slice workflow. It combines a
+primary power-law mass distribution, conditional secondary-mass distribution,
+power-law redshift evolution, and optional rate scale `R0`.
+"""
+Base.@kwdef struct SimplePowerLawPopulation <: AbstractCBCRateModel
+    cosmology::FlatLambdaCDM = FlatLambdaCDM()
+    mass::ConditionalMassDistribution = ConditionalMassDistribution(PowerLaw(5, 80, -2.0), PowerLaw(5, 80, 1.0))
+    redshift_rate::PowerLawRate = PowerLawRate(0.0)
+    R0::Float64 = 25.0
+    scale_free::Bool = false
+end
+
+"""
+    CBCVanillaRate(cosmology, mass_distribution, redshift_rate; R0=1, scale_free=false)
+
+Rate model for events represented by detector-frame `(mass_1, mass_2,
+luminosity_distance)`.
+"""
+struct CBCVanillaRate{C<:AbstractCosmology,M,R<:AbstractRedshiftRate} <: AbstractCBCRateModel
+    cosmology::C
+    mass_distribution::M
+    redshift_rate::R
+    R0::Float64
+    scale_free::Bool
+end
+CBCVanillaRate(cosmology, mass_distribution, redshift_rate; R0=1.0, scale_free=false) =
+    CBCVanillaRate(cosmology, mass_distribution, redshift_rate, float(R0), Bool(scale_free))
+
+"""
+    CBCMass1Rate(cosmology, mass_distribution, q_distribution, redshift_rate; R0=1, scale_free=false)
+
+Rate model for detector-frame `(mass_1, mass_ratio, luminosity_distance)`.
+"""
+struct CBCMass1Rate{C<:AbstractCosmology,M,Q,R<:AbstractRedshiftRate} <: AbstractCBCRateModel
+    cosmology::C
+    mass_distribution::M
+    q_distribution::Q
+    redshift_rate::R
+    R0::Float64
+    scale_free::Bool
+end
+CBCMass1Rate(cosmology, mass_distribution, q_distribution, redshift_rate; R0=1.0, scale_free=false) =
+    CBCMass1Rate(cosmology, mass_distribution, q_distribution, redshift_rate, float(R0), Bool(scale_free))
+
+"""
+    CBCMchirpQRate(cosmology, chirp_mass_distribution, q_distribution, redshift_rate; R0=1, scale_free=false)
+
+Rate model for detector-frame `(chirp_mass, mass_ratio, luminosity_distance)`.
+"""
+struct CBCMchirpQRate{C<:AbstractCosmology,M,Q,R<:AbstractRedshiftRate} <: AbstractCBCRateModel
+    cosmology::C
+    chirp_mass_distribution::M
+    q_distribution::Q
+    redshift_rate::R
+    R0::Float64
+    scale_free::Bool
+end
+CBCMchirpQRate(cosmology, mchirp_distribution, q_distribution, redshift_rate; R0=1.0, scale_free=false) =
+    CBCMchirpQRate(cosmology, mchirp_distribution, q_distribution, redshift_rate, float(R0), Bool(scale_free))
+
+const _simple_schema = ParameterSchema(
+    ParameterSpec(:alpha; lower=0.5, upper=5.0, default=2.0, description="positive primary-mass power-law slope; density uses -alpha"),
+    ParameterSpec(:beta; lower=-2.0, upper=6.0, default=1.0, description="secondary conditional power-law exponent"),
+    ParameterSpec(:mmin; lower=2.0, upper=20.0, default=5.0, unit="Msun"),
+    ParameterSpec(:mmax; lower=30.0, upper=120.0, default=80.0, unit="Msun"),
+    ParameterSpec(:gamma; lower=-4.0, upper=8.0, default=0.0, description="redshift evolution exponent"),
+    ParameterSpec(:R0; lower=0.1, upper=200.0, prior=:loguniform, default=25.0, unit="Gpc^-3 yr^-1"),
+    ParameterSpec(:H0; lower=50.0, upper=90.0, default=67.7, unit="km s^-1 Mpc^-1"),
+    ParameterSpec(:Om0; lower=0.05, upper=0.6, default=0.308),
+)
+
+parameter_schema(::Type{SimplePowerLawPopulation}) = _simple_schema
+parameter_schema(::SimplePowerLawPopulation) = _simple_schema
+
+"""
+    materialize(::Type{SimplePowerLawPopulation}, theta; schema=parameter_schema(...), zmax=10, scale_free=false)
+
+Build an immutable population model from a sampler vector or named parameter
+tuple.
+"""
+function materialize(::Type{SimplePowerLawPopulation}, theta; schema=parameter_schema(SimplePowerLawPopulation), zmax=10.0, scale_free=false)
+    nt = theta isa NamedTuple ? theta : unpack(schema, theta)
+    nt.mmin < nt.mmax || throw(ArgumentError("mmin must be smaller than mmax"))
+    p1 = PowerLaw(nt.mmin, nt.mmax, -nt.alpha)
+    p2 = PowerLaw(nt.mmin, nt.mmax, nt.beta)
+    return SimplePowerLawPopulation(
+        cosmology=FlatLambdaCDM(H0=nt.H0, Om0=nt.Om0, zmax=zmax),
+        mass=ConditionalMassDistribution(p1, p2),
+        redshift_rate=PowerLawRate(nt.gamma),
+        R0=nt.R0,
+        scale_free=scale_free,
+    )
+end
+materialize(model::SimplePowerLawPopulation, theta=nothing; kwargs...) = theta === nothing ? model : materialize(SimplePowerLawPopulation, theta; kwargs...)
+
+_rate_scale(model) = model.scale_free ? 0.0 : log(model.R0)
+
+"""
+    log_event_rate(model, event, prior)
+
+Evaluate detector-frame event log weight contribution for a named event row.
+The event must contain either `(mass_1, mass_2, luminosity_distance)`,
+`(mass_1, mass_ratio, luminosity_distance)`, or `(chirp_mass, mass_ratio,
+luminosity_distance)`, depending on model type. `prior` is the PE or injection
+draw prior density in the same detector-frame variables.
+"""
+function log_event_rate(model::SimplePowerLawPopulation, mass_1, mass_2, luminosity_distance, prior)
+    return log_event_rate(CBCVanillaRate(model.cosmology, model.mass, model.redshift_rate; R0=model.R0, scale_free=model.scale_free),
+        mass_1, mass_2, luminosity_distance, prior)
+end
+
+function log_event_rate(model::CBCVanillaRate, mass_1, mass_2, luminosity_distance, prior)
+    prior > 0 || return -Inf
+    m1s, m2s, z = detector_to_source(mass_1, mass_2, luminosity_distance, model.cosmology)
+    logjac = log(detector_to_source_jacobian(z, model.cosmology))
+    return logpdf(model.mass_distribution, m1s, m2s) + log_rate(model.redshift_rate, z) +
+        log(dvc_dz(model.cosmology, z)) - log(prior) - logjac - log1p(z) + _rate_scale(model)
+end
+
+function log_event_rate(model::CBCMass1Rate, mass_1, q, luminosity_distance, prior)
+    prior > 0 || return -Inf
+    z = redshift_at_luminosity_distance(model.cosmology, luminosity_distance)
+    m1s = mass_1 / (1 + z)
+    return logpdf(model.mass_distribution, m1s) + logpdf(model.q_distribution, q) +
+        log_rate(model.redshift_rate, z) + log(dvc_dz(model.cosmology, z)) -
+        log(prior) - log(detector_to_source_jacobian_q(z, model.cosmology)) - log1p(z) + _rate_scale(model)
+end
+
+function log_event_rate(model::CBCMchirpQRate, mchirp, q, luminosity_distance, prior)
+    prior > 0 || return -Inf
+    z = redshift_at_luminosity_distance(model.cosmology, luminosity_distance)
+    mcs = mchirp / (1 + z)
+    return logpdf(model.chirp_mass_distribution, mcs) + logpdf(model.q_distribution, q) +
+        log_rate(model.redshift_rate, z) + log(dvc_dz(model.cosmology, z)) -
+        log(prior) - log(detector_to_source_jacobian_q(z, model.cosmology)) - log1p(z) + _rate_scale(model)
+end
+
+end

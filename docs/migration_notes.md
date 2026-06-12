@@ -1,0 +1,111 @@
+# Migration Notes
+
+`Icarogw.jl` is not a line-by-line translation of Python `icarogw`. It keeps
+the scientific contracts of the first-version scope while using Julia-native
+data layouts and dispatch.
+
+## Native Julia Design
+
+The Python project relies on mutable wrapper classes whose `update(**kwargs)`
+methods rebuild internal state before likelihood evaluation. The Julia rewrite
+separates user-friendly parameter handling from the likelihood hot path:
+
+```julia
+schema = parameter_schema(SimplePowerLawPopulation)
+theta = prior_transform(schema, u)
+model = materialize(SimplePowerLawPopulation, theta)
+loglikelihood(model, data)
+```
+
+`NamedTuple` input is supported for readability, but sampler-facing evaluation
+uses `AbstractVector{<:Real}` and an ordered `ParameterSchema`.
+
+## Data Containers
+
+`PosteriorSamples`, `PosteriorSampleSet`, and `InjectionSet` store values in
+dense `Matrix{Float64}` plus a small vector of column names. They can be
+constructed from `NamedTuple`, `Dict`, `DataFrame`, or any Tables.jl-compatible
+object. CSV and HDF5 IO are supported for first-version workflows.
+
+Pickle is intentionally unsupported.
+
+## Likelihood Interface
+
+The core likelihood is a function, not a `bilby.Likelihood` subclass:
+
+```julia
+loglikelihood(SimplePowerLawPopulation, data, theta)
+```
+
+It implements posterior-sample reweighting, injection selection correction,
+Poisson-rate likelihood, shape-only likelihood, and no-event likelihood.
+Diagnostics are returned through `LikelihoodDiagnostics` rather than printed.
+
+Scalar likelihood evaluation is single-core and deterministic. Batch evaluation
+uses `theta_matrix` with shape `nparameters x npoints`; `parallel=true` is an
+explicit opt-in.
+
+## Dynesty Integration
+
+The core package does not import `Dynesty`. `DynestyInterface.jl` provides
+closures:
+
+```julia
+problem = dynesty_problem(SimplePowerLawPopulation, data)
+sampler = Dynesty.NestedSampler(problem.loglikelihood, problem.prior_transform, problem.ndim)
+```
+
+The example in `examples/dynesty_population_inference.jl` loads local
+`../Dynesty.jl` if available and otherwise prints a clear skip message.
+
+## Cosmology
+
+The Python implementation delegates baseline distances to Astropy and tabulates
+interpolants. The Julia version computes flat `ΛCDM` distances with `QuadGK`
+and inverts luminosity distance with `Roots`. This is simpler for the first
+native version and avoids a Python dependency. Future performance work can add
+explicit cosmology workspaces or interpolation caches.
+
+## Performance Strategy
+
+The first hot path avoids `Dict`, `DataFrame`, and dynamic wrapper updates
+inside likelihood loops. Further performance work should focus on:
+
+- precomputed cosmology interpolation workspaces
+- fewer temporary vectors in diagnostics
+- generated or cached column access plans
+- benchmarked specialization for common rate models
+
+## Known Differences
+
+- Numerical distances may differ slightly from Astropy because integration and
+  constants are native Julia.
+- The simulation helpers are quick, seeded mock-data tools rather than full
+  detector simulations.
+- Several advanced spin/redshift-evolving combinations are represented by
+  composable primitives but still need Python-reference fixtures before being
+  marked fully migrated.
+
+## Planned And Excluded Features
+
+Planned after first-version core:
+
+- galaxy catalog / dark siren / bright siren workflows
+- stochastic background and `Omega_GW`
+- mixed stochastic/catalog/EM likelihoods
+- optional additional file migration formats such as NPZ
+
+Explicitly excluded:
+
+- Condor / HTCondor scripts
+- pickle
+- `cupy_pal.py` backend switching
+- Python bridge dependencies in package code
+- CUDA/GPU backend for first version
+
+## License And Attribution
+
+The Python source project in `../icarogw` declares `EUPL-1.2`. This Julia
+rewrite keeps the EUPL license text and attribution, and describes itself as a
+native Julia migration rather than an independent reimplementation under a
+different license.
