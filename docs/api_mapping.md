@@ -64,6 +64,7 @@ Status meanings:
 | `BrokenPowerLawMultiPeak` | `BrokenPowerLawMultiPeak` | implemented | Broken law plus two peaks. |
 | `BrokenPowerLawTripleMultiPeak` | same name | implemented | Broken law plus three peaks. |
 | `conditional_2dimpdf` | `ConditionalMassDistribution` | implemented/renamed | Conditional `m2 <= m1`. |
+| `conditional_2dimz_pdf` | `RedshiftConditionalMassDistribution` | implemented/renamed | Redshift-dependent primary `p(m1|z)` with conditional secondary. |
 | `paired_2dimpdf` | `PairedMassDistribution` | implemented/renamed | Pairing by mass ratio power. |
 | `piecewise_constant_2d_distribution_normalized` | `PiecewiseConstant2D` | implemented/renamed | Triangular checkerboard. |
 | low-pass / dip smoothers | `LowpassSmoothedProb`, `SmoothedPlusDipProb` | implemented | Native numerical normalization. |
@@ -82,7 +83,7 @@ Status meanings:
 | `CBC_rate_m_given_redshift` | `CBCSingleMassRate` | implemented/renamed | Detector `(m, dL)` with optional redshift-dependent mass prior. |
 | `CBC_rate_total_mass_q` | `CBCTotalMassQRate` | implemented/renamed | Detector `(Mtot, q, dL)`. |
 | `CBC_rate_m1_given_redshift_q` | `CBCRedshiftPrimaryQRate` | implemented/renamed | Detector `(m1, q, dL)` with `p(m1|z)`. |
-| `CBC_rate_m1_given_redshift_m2` | `CBCVanillaRate` with redshift-aware mass distribution | partial | Needs fixture-backed validation before status becomes fully implemented. |
+| `CBC_rate_m1_given_redshift_m2` | `CBCVanillaRate` with `RedshiftConditionalMassDistribution` | implemented/merged | Detector `(m1, m2, dL)` with `p(m1|z)p(m2|m1)`. |
 | spin variants | compose spin priors with rate models | partial | Core spin priors exist; all Python combinations need more regression fixtures. |
 | catalog/EM counterpart rates | placeholder modules | planned | First-version exclusion. |
 | stochastic mixed rates | placeholder modules | planned | First-version exclusion. |

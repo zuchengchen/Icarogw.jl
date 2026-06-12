@@ -19,6 +19,7 @@ export AbstractPrior,
     BrokenPowerLawMultiPeak,
     BrokenPowerLawTripleMultiPeak,
     ConditionalMassDistribution,
+    RedshiftConditionalMassDistribution,
     PairedMassDistribution,
     PiecewiseConstant2D,
     LowpassSmoothedProb,
@@ -369,6 +370,27 @@ function rand_prior(rng::AbstractRNG, p::ConditionalMassDistribution, n::Integer
     end
     return m1, m2
 end
+
+"""
+    RedshiftConditionalMassDistribution(primary, secondary)
+
+Two-dimensional distribution with a redshift-dependent primary mass density:
+`p(m1, m2 | z) = p1(m1 | z) p2(m2) / CDF2(m1)` and support `m2 <= m1`.
+This covers Python `CBC_rate_m1_given_redshift_m2` without a mutable wrapper
+hierarchy.
+"""
+struct RedshiftConditionalMassDistribution{P1<:AbstractPrior,P2<:AbstractPrior} <: AbstractPrior
+    primary::P1
+    secondary::P2
+end
+function logpdf(p::RedshiftConditionalMassDistribution, m1::Real, m2::Real, z::Real)
+    m2 <= m1 || return -Inf
+    denom = cdf(p.secondary, m1)
+    denom > 0 || return -Inf
+    return logpdf(p.primary, m1, z) + logpdf(p.secondary, m2) - log(denom)
+end
+pdf(p::RedshiftConditionalMassDistribution, m1::Real, m2::Real, z::Real) =
+    exp(logpdf(p, m1, m2, z))
 
 """
     PairedMassDistribution(base; beta=0)

@@ -279,7 +279,9 @@ function log_event_rate(model::CBCVanillaRate, mass_1, mass_2, luminosity_distan
     prior > 0 || return -Inf
     m1s, m2s, z = detector_to_source(mass_1, mass_2, luminosity_distance, model.cosmology)
     logjac = log(detector_to_source_jacobian(z, model.cosmology))
-    return logpdf(model.mass_distribution, m1s, m2s) + log_rate(model.redshift_rate, z) +
+    mass_logpdf = applicable(logpdf, model.mass_distribution, m1s, m2s, z) ?
+        logpdf(model.mass_distribution, m1s, m2s, z) : logpdf(model.mass_distribution, m1s, m2s)
+    return mass_logpdf + log_rate(model.redshift_rate, z) +
         log(dvc_dz(model.cosmology, z)) - log(prior) - logjac - log1p(z) + _rate_scale(model)
 end
 

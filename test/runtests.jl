@@ -112,6 +112,9 @@ end
     @test isfinite(logpdf(gz, 31.0, 0.5))
     mixz = MixtureMassPrior((PowerLawStationary(2.0, 5.0, 80.0), gz), [0.7, 0.3])
     @test isfinite(logpdf(mixz, 30.0, 0.2))
+    rcm = RedshiftConditionalMassDistribution(plz, PowerLaw(5.0, 80.0, 1.0))
+    @test isfinite(logpdf(rcm, 30.0, 20.0, 0.4))
+    @test logpdf(rcm, 20.0, 30.0, 0.4) == -Inf
 
     schema = parameter_schema(SimplePowerLawPopulation)
     theta = prior_transform(schema, fill(0.5, length(schema)))
@@ -238,11 +241,22 @@ end
     @test isfinite(log_event_rate(CBCTotalMassQRate(c, mass, qprior, rate; R0=1), mt, q, dl, prior))
     redshift_mass = PowerLawLinear(2.0, 0.0, 5.0, 0.0, 100.0, 0.0)
     @test isfinite(log_event_rate(CBCRedshiftPrimaryQRate(c, redshift_mass, qprior, rate; R0=1), m1d, q, dl, prior))
+    redshift_pair = RedshiftConditionalMassDistribution(redshift_mass, PowerLaw(5.0, 100.0, 1.0))
+    pair_rate = CBCVanillaRate(c, redshift_pair, rate; R0=1)
+    z_from_dl = redshift_at_luminosity_distance(c, dl)
+    m1s = m1d / (1 + z_from_dl)
+    m2s = m2d / (1 + z_from_dl)
+    expected_pair = logpdf(redshift_pair, m1s, m2s, z_from_dl) + log(dvc_dz(c, z_from_dl)) -
+        log(detector_to_source_jacobian(z_from_dl, c)) - log1p(z_from_dl)
+    @test log_event_rate(pair_rate, m1d, m2d, dl, prior) ≈ expected_pair
 
     ps = PosteriorSamples((mass_1=[m1d], mass_ratio=[q], luminosity_distance=[dl], prior=[1.0]))
     inj = InjectionSet((mass_1=[m1d], mass_ratio=[q], luminosity_distance=[dl], prior=[1.0]); ntotal=10, Tobs=1)
     data = PopulationData(PosteriorSampleSet(ps), inj)
     @test isfinite(loglikelihood(CBCMass1Rate(c, mass, qprior, rate; R0=1), data))
+    ps_pair = PosteriorSamples((mass_1=[m1d], mass_2=[m2d], luminosity_distance=[dl], prior=[1.0]))
+    inj_pair = InjectionSet((mass_1=[m1d], mass_2=[m2d], luminosity_distance=[dl], prior=[1.0]); ntotal=10, Tobs=1)
+    @test isfinite(loglikelihood(pair_rate, PopulationData(PosteriorSampleSet(ps_pair), inj_pair)))
 end
 
 @testset "planned placeholders" begin

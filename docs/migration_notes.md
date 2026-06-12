@@ -72,8 +72,9 @@ caches.
 Python wrapper classes such as `PowerLaw_PowerLaw`,
 `PowerLaw_PowerLaw_Gaussian`, and redshift-linear mass wrappers are represented
 by composable Julia pieces: `PowerLawStationary`, `PowerLawLinear`,
-`GaussianStationary`, `GaussianLinear`, and `MixtureMassPrior`. This keeps the
-sampler-facing API compact while covering the same first-version model family.
+`GaussianStationary`, `GaussianLinear`, `MixtureMassPrior`, and
+`RedshiftConditionalMassDistribution`. This keeps the sampler-facing API
+compact while covering the same first-version model family.
 
 Additional CBC coordinate systems are expressed as separate rate model structs:
 `CBCMass1Rate`, `CBCMchirpQRate`, `CBCSingleMassRate`,
