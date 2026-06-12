@@ -1,6 +1,27 @@
 using Icarogw
+using CSV
+using DataFrames
 using Random
 using Test
+
+function _tiny_population_data(c=FlatLambdaCDM(zmax=2))
+    z1, z2 = 0.2, 0.35
+    m1a, m2a, dla = source_to_detector(30.0, 20.0, z1, c)
+    m1b, m2b, dlb = source_to_detector(32.0, 18.0, z2, c)
+    ps1 = PosteriorSamples((mass_1=[m1a, 1.02m1a, 0.98m1a],
+        mass_2=[m2a, 1.01m2a, 0.99m2a],
+        luminosity_distance=[dla, 1.01dla, 0.99dla],
+        prior=fill(1.0, 3)); event_name=:event1)
+    ps2 = PosteriorSamples((mass_1=[m1b, 1.01m1b, 0.99m1b],
+        mass_2=[m2b, 0.99m2b, 1.01m2b],
+        luminosity_distance=[dlb, 1.01dlb, 0.99dlb],
+        prior=fill(1.0, 3)); event_name=:event2)
+    inj = InjectionSet((mass_1=[m1a, m1b, 1.04m1a, 0.97m1b],
+        mass_2=[m2a, m2b, 0.96m2a, 1.02m2b],
+        luminosity_distance=[dla, dlb, 1.02dla, 0.98dlb],
+        prior=fill(1.0, 4)); ntotal=8, Tobs=2.0)
+    return PopulationData(PosteriorSampleSet(ps1, ps2), inj)
+end
 
 @testset "cosmology and conversions" begin
     c = FlatLambdaCDM(H0=67.7, Om0=0.308, zmax=5)
@@ -19,6 +40,56 @@ using Test
     @test chi_effective_prior_from_aligned_spins(0.8, 1.0, 0.0) > 0
     @test chi_effective_prior_from_isotropic_spins(0.8, 1.0, 0.0) > 0
     @test chi_p_prior_from_isotropic_spins(0.8, 1.0, 0.3) > 0
+end
+
+@testset "reference fixtures" begin
+    refdir = joinpath(@__DIR__, "reference")
+
+    cosmology_models = Dict(
+        "flatlcdm" => FlatLambdaCDM(H0=67.7, Om0=0.308, zmax=5),
+        "flatw" => FlatwCDM(H0=67.7, Om0=0.308, w0=-0.8, zmax=5),
+        "flatw0wa" => Flatw0waCDM(H0=67.7, Om0=0.308, w0=-0.9, wa=0.2, zmax=5),
+    )
+    cosmo_ref = CSV.File(joinpath(refdir, "reference_cosmology_core.csv")) |> DataFrame
+    for row in eachrow(cosmo_ref)
+        c = cosmology_models[row.model]
+        @test luminosity_distance(c, row.z) ≈ row.luminosity_distance rtol=3e-7
+        @test comoving_volume(c, row.z) ≈ row.comoving_volume rtol=3e-6
+        @test dvc_dz_dOmega(c, row.z) ≈ row.dvc_dz_dOmega rtol=4e-6
+        @test ddl_dz(c, row.z) ≈ row.ddl_dz rtol=4e-7
+        @test redshift_at_luminosity_distance(c, row.luminosity_distance) ≈ row.dl2z atol=2e-7
+    end
+
+    conv_ref = only(CSV.File(joinpath(refdir, "reference_conversions_core.csv")) |> DataFrame |> eachrow)
+    @test chirp_mass(conv_ref.m1, conv_ref.m2) ≈ conv_ref.chirp_mass rtol=1e-14
+    @test mass_ratio(conv_ref.m1, conv_ref.m2) ≈ conv_ref.mass_ratio rtol=1e-14
+    @test f_gw_isco(conv_ref.m1, conv_ref.m2) ≈ conv_ref.f_gw_isco rtol=1e-14
+    @test L2M(conv_ref.L) ≈ conv_ref.L2M rtol=1e-14 atol=1e-14
+    @test M2L(conv_ref.M) ≈ conv_ref.M2L rtol=1e-14
+    @test chi_eff_from_spins(conv_ref.chi1, conv_ref.chi2, conv_ref.cos1, conv_ref.cos2, conv_ref.q) ≈ conv_ref.chi_eff rtol=1e-14
+    @test chi_p_from_spins(conv_ref.chi1, conv_ref.chi2, conv_ref.cos1, conv_ref.cos2, conv_ref.q) ≈ conv_ref.chi_p rtol=1e-14
+
+    spin_ref = CSV.File(joinpath(refdir, "reference_spin_core.csv")) |> DataFrame
+    for row in eachrow(spin_ref)
+        @test chi_effective_prior_from_aligned_spins(row.q, row.amax, row.x_eff) ≈ row.aligned rtol=1e-14
+        @test chi_effective_prior_from_isotropic_spins(row.q, row.amax, row.x_eff) ≈ row.isotropic rtol=4e-6
+        @test chi_p_prior_from_isotropic_spins(row.q, row.amax, row.x_p) ≈ row.chi_p rtol=1e-14
+    end
+
+    prior_models = Dict{String,Any}(
+        "PowerLaw" => PowerLaw(5.0, 80.0, -2.0),
+        "TruncatedGaussian" => TruncatedGaussian(30.0, 5.0, 5.0, 80.0),
+        "PowerLawGaussian" => PowerLawGaussian(5.0, 80.0, -2.0, 0.1, 35.0, 4.0, 5.0, 55.0),
+        "BrokenPowerLaw" => BrokenPowerLaw(5.0, 80.0, -1.5, -3.0, 0.4),
+        "BetaDistribution" => BetaDistribution(2.0, 5.0),
+        "TruncatedBetaDistribution" => TruncatedBetaDistribution(2.0, 5.0, 0.8),
+    )
+    priors_ref = CSV.File(joinpath(refdir, "reference_priors_core.csv")) |> DataFrame
+    for row in eachrow(priors_ref)
+        prior = prior_models[row.prior]
+        @test logpdf(prior, row.x) ≈ row.logpdf rtol=1e-13 atol=1e-13
+        @test cdf(prior, row.x) ≈ row.cdf rtol=1e-12 atol=1e-14
+    end
 end
 
 @testset "priors and schema" begin
@@ -71,6 +142,82 @@ end
     vals = loglikelihood_batch(SimplePowerLawPopulation, data, batch)
     @test length(vals) == 2
     @test vals[1] ≈ vals[2]
+
+    tiny = _tiny_population_data()
+    model = SimplePowerLawPopulation(cosmology=FlatLambdaCDM(zmax=2), R0=10.0)
+    poisson_logl = loglikelihood(model, tiny; options=LikelihoodOptions(poisson=true))
+    no_poisson_logl = loglikelihood(model, tiny; options=LikelihoodOptions(poisson=false))
+    shape_logl = loglikelihood(model, tiny; options=LikelihoodOptions(shape_only=true))
+    diag_tiny = likelihood_diagnostics(model, tiny)
+    @test poisson_logl ≈ no_poisson_logl - diag_tiny.N_expected + length(tiny.posteriors) * log(tiny.injections.Tobs)
+    @test shape_logl ≈ no_poisson_logl - length(tiny.posteriors) * log(diag_tiny.xi)
+    @test no_event_loglikelihood(model, tiny.injections) ≈ -diag_tiny.N_expected
+    @test likelihood_diagnostics(model, tiny; options=LikelihoodOptions(neff_event_min=100)).accepted == false
+    @test loglikelihood(model, tiny; options=LikelihoodOptions(neff_injection_min=100)) == -Inf
+    @test loglikelihood_batch(SimplePowerLawPopulation, data, batch; parallel=true) ≈ vals
+end
+
+@testset "io and validation" begin
+    ps = PosteriorSamples((mass_1=[30.0, 31.0], mass_2=[20.0, 19.5],
+        luminosity_distance=[1000.0, 1100.0], prior=[1.0, 2.0]); event_name=:gw1)
+    inj = InjectionSet((mass_1=[32.0, 33.0], mass_2=[21.0, 20.5],
+        luminosity_distance=[1200.0, 1300.0], prior=[1.5, 1.6]); ntotal=4, Tobs=1.5)
+    mktempdir() do dir
+        ps_csv = joinpath(dir, "posterior.csv")
+        inj_csv = joinpath(dir, "injections.csv")
+        CSV.write(ps_csv, DataFrame(mass_1=collect(column(ps, :mass_1)), mass_2=collect(column(ps, :mass_2)),
+            luminosity_distance=collect(column(ps, :luminosity_distance)), prior=ps.prior))
+        CSV.write(inj_csv, DataFrame(mass_1=collect(column(inj, :mass_1)), mass_2=collect(column(inj, :mass_2)),
+            luminosity_distance=collect(column(inj, :luminosity_distance)), prior=inj.prior))
+        ps_from_csv = read_posterior_csv(ps_csv; event_name=:gw1)
+        inj_from_csv = read_injections_csv(inj_csv; ntotal=4, Tobs=1.5)
+        @test ps_from_csv.names == ps.names
+        @test Matrix(ps_from_csv.values) ≈ Matrix(ps.values)
+        @test ps_from_csv.prior ≈ ps.prior
+        @test inj_from_csv.names == inj.names
+        @test Matrix(inj_from_csv.values) ≈ Matrix(inj.values)
+        @test inj_from_csv.prior ≈ inj.prior
+        @test inj_from_csv.Tobs == 1.5
+
+        ps_h5 = joinpath(dir, "posterior.h5")
+        inj_h5 = joinpath(dir, "injections.h5")
+        write_hdf5(ps_h5, ps)
+        write_hdf5(inj_h5, inj)
+        ps_from_h5 = read_posterior_hdf5(ps_h5)
+        inj_from_h5 = read_injections_hdf5(inj_h5)
+        @test ps_from_h5.event_name == :gw1
+        @test ps_from_h5.names == ps.names
+        @test ps_from_h5.values ≈ ps.values
+        @test ps_from_h5.prior ≈ ps.prior
+        @test inj_from_h5.names == inj.names
+        @test inj_from_h5.values ≈ inj.values
+        @test inj_from_h5.prior ≈ inj.prior
+        @test inj_from_h5.ntotal == 4
+        @test inj_from_h5.Tobs == 1.5
+    end
+
+    @test_throws ArgumentError PosteriorSamples((mass_1=[30.0], prior=[0.0]))
+    @test_throws ArgumentError PosteriorSamples((mass_1=[30.0], luminosity_distance=[Inf], prior=[1.0]))
+    @test_throws ArgumentError InjectionSet((mass_1=[30.0, 31.0], prior=[1.0]); ntotal=2)
+    @test_throws ArgumentError loglikelihood(CBCMass1Rate(FlatLambdaCDM(zmax=2), PowerLaw(5.0, 100.0, -2.0),
+        PowerLaw(0.1, 1.0, 0.0), PowerLawRate(0.0)), PopulationData(PosteriorSampleSet(ps), inj))
+end
+
+@testset "simulation sanity" begin
+    rng = MersenneTwister(123)
+    model = SimplePowerLawPopulation(cosmology=FlatLambdaCDM(zmax=1))
+    sources = simulate_sources(rng, 16, model; zmax=0.4)
+    @test length(sources.mass_1) == 16
+    @test all(>(0), sources.mass_1)
+    @test all(>(0), sources.mass_2)
+    @test all(sources.mass_1 .>= sources.mass_2)
+    @test all(0 .< sources.redshift .<= 0.4)
+    snr = snr_samples(rng, sources.mass_1, sources.mass_2, sources.luminosity_distance)
+    mask = apply_snr_cut(sources, snr.rho_obs; snr_threshold=0.0)
+    @test mask == (f_gw_isco.(sources.mass_1, sources.mass_2) .>= 15.0)
+    post = generate_posterior_samples(rng, (mass_1=40.0, mass_2=25.0, luminosity_distance=1500.0); nsamples=12, event_name=:mock)
+    @test length(post.prior) == 12
+    @test post.event_name == :mock
 end
 
 @testset "alternate rate coordinates" begin

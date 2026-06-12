@@ -206,7 +206,8 @@ function read_posterior_hdf5(path::AbstractString)
         names = Symbol.(read(h, "names"))
         values = Matrix{Float64}(read(h, "values"))
         prior = Vector{Float64}(read(h, "prior"))
-        event_name = Symbol(read(attrs(h), "event_name", "event"))
+        hattrs = attrs(h)
+        event_name = Symbol(haskey(hattrs, "event_name") ? hattrs["event_name"] : "event")
         return PosteriorSamples(event_name, names, values, prior) |> validate
     end
 end
@@ -221,8 +222,9 @@ function read_injections_hdf5(path::AbstractString)
         names = Symbol.(read(h, "names"))
         values = Matrix{Float64}(read(h, "values"))
         prior = Vector{Float64}(read(h, "prior"))
-        ntotal = Int(read(attrs(h), "ntotal"))
-        Tobs = Float64(read(attrs(h), "Tobs"))
+        hattrs = attrs(h)
+        ntotal = Int(hattrs["ntotal"])
+        Tobs = Float64(hattrs["Tobs"])
         return InjectionSet(names, values, prior, ntotal, Tobs) |> validate
     end
 end
