@@ -80,6 +80,10 @@ Additional CBC coordinate systems are expressed as separate rate model structs:
 `CBCMass1Rate`, `CBCMchirpQRate`, `CBCSingleMassRate`,
 `CBCTotalMassQRate`, and `CBCRedshiftPrimaryQRate`.
 
+Spin variants are represented by `SpinWeightedRate(base_model, spin_prior)`,
+which composes `DefaultSpinPrior` or `GaussianSpinPrior` with the mass/redshift
+rate model instead of duplicating every Python spin wrapper class.
+
 ## Performance Strategy
 
 The first hot path avoids `Dict`, `DataFrame`, and dynamic wrapper updates
@@ -96,9 +100,9 @@ inside likelihood loops. Further performance work should focus on:
   constants are native Julia.
 - The simulation helpers are quick, seeded mock-data tools rather than full
   detector simulations.
-- Several advanced spin/redshift-evolving combinations are represented by
-  composable primitives but still need Python-reference fixtures before their
-  numerical tolerances are locked down.
+- Several advanced redshift-evolving mixture combinations are represented by
+  composable primitives but still need additional reference fixtures before
+  their numerical tolerances are locked down.
 
 ## Planned And Excluded Features
 

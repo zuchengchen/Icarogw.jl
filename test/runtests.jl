@@ -257,6 +257,23 @@ end
     ps_pair = PosteriorSamples((mass_1=[m1d], mass_2=[m2d], luminosity_distance=[dl], prior=[1.0]))
     inj_pair = InjectionSet((mass_1=[m1d], mass_2=[m2d], luminosity_distance=[dl], prior=[1.0]); ntotal=10, Tobs=1)
     @test isfinite(loglikelihood(pair_rate, PopulationData(PosteriorSampleSet(ps_pair), inj_pair)))
+
+    spin_prior = DefaultSpinPrior(2.0, 3.0, 0.5, 0.4)
+    spin_rate = SpinWeightedRate(CBCVanillaRate(c, ConditionalMassDistribution(mass, PowerLaw(5.0, 100.0, 1.0)), rate; R0=1), spin_prior)
+    spin_cols = (0.2, 0.3, 0.4, -0.2)
+    @test log_event_rate(spin_rate, m1d, m2d, dl, spin_cols..., prior) ≈
+        log_event_rate(spin_rate.base, m1d, m2d, dl, prior) + logpdf(spin_prior, spin_cols...)
+    ps_spin = PosteriorSamples((mass_1=[m1d], mass_2=[m2d], luminosity_distance=[dl],
+        chi_1=[spin_cols[1]], chi_2=[spin_cols[2]], cos_t_1=[spin_cols[3]], cos_t_2=[spin_cols[4]], prior=[1.0]))
+    inj_spin = InjectionSet((mass_1=[m1d], mass_2=[m2d], luminosity_distance=[dl],
+        chi_1=[spin_cols[1]], chi_2=[spin_cols[2]], cos_t_1=[spin_cols[3]], cos_t_2=[spin_cols[4]], prior=[1.0]);
+        ntotal=10, Tobs=1)
+    @test isfinite(loglikelihood(spin_rate, PopulationData(PosteriorSampleSet(ps_spin), inj_spin)))
+
+    eff_prior = GaussianSpinPrior(0.0, 0.3, 0.4, 0.2, 0.1)
+    eff_rate = SpinWeightedRate(CBCMass1Rate(c, mass, qprior, rate; R0=1), eff_prior)
+    @test log_event_rate(eff_rate, m1d, q, dl, 0.1, 0.3, prior) ≈
+        log_event_rate(eff_rate.base, m1d, q, dl, prior) + logpdf(eff_prior, 0.1, 0.3)
 end
 
 @testset "planned placeholders" begin

@@ -19,6 +19,7 @@ export AbstractRedshiftRate,
     CBCSingleMassRate,
     CBCTotalMassQRate,
     CBCRedshiftPrimaryQRate,
+    SpinWeightedRate,
     SimplePowerLawPopulation,
     materialize,
     log_event_rate,
@@ -224,6 +225,24 @@ end
 CBCRedshiftPrimaryQRate(cosmology, mass_distribution, q_distribution, redshift_rate; R0=1.0, scale_free=false) =
     CBCRedshiftPrimaryQRate(cosmology, mass_distribution, q_distribution, redshift_rate, float(R0), Bool(scale_free))
 
+"""
+    SpinWeightedRate(base_model, spin_prior, spin_columns)
+
+Compose a CBC rate model with an independent spin prior. `spin_columns` must be
+either `(:chi_1, :chi_2, :cos_t_1, :cos_t_2)` for `DefaultSpinPrior`-style
+component-spin priors or `(:chi_eff, :chi_p)` for `GaussianSpinPrior`-style
+effective-spin priors.
+"""
+struct SpinWeightedRate{B<:AbstractCBCRateModel,S,C<:Tuple} <: AbstractCBCRateModel
+    base::B
+    spin_prior::S
+    spin_columns::C
+end
+SpinWeightedRate(base::AbstractCBCRateModel, spin_prior) =
+    SpinWeightedRate(base, spin_prior, _default_spin_columns(spin_prior))
+_default_spin_columns(::DefaultSpinPrior) = (:chi_1, :chi_2, :cos_t_1, :cos_t_2)
+_default_spin_columns(::GaussianSpinPrior) = (:chi_eff, :chi_p)
+
 const _simple_schema = ParameterSchema(
     ParameterSpec(:alpha; lower=0.5, upper=5.0, default=2.0, description="positive primary-mass power-law slope; density uses -alpha"),
     ParameterSpec(:beta; lower=-2.0, upper=6.0, default=1.0, description="secondary conditional power-law exponent"),
@@ -260,6 +279,7 @@ end
 materialize(model::SimplePowerLawPopulation, theta=nothing; kwargs...) = theta === nothing ? model : materialize(SimplePowerLawPopulation, theta; kwargs...)
 
 _rate_scale(model) = model.scale_free ? 0.0 : log(model.R0)
+_rate_scale(model::SpinWeightedRate) = _rate_scale(model.base)
 
 """
     log_event_rate(model, event, prior)
@@ -328,6 +348,15 @@ function log_event_rate(model::CBCRedshiftPrimaryQRate, mass_1, q, luminosity_di
     return logpdf(model.mass_distribution, m1s, z) + logpdf(model.q_distribution, q) +
         log_rate(model.redshift_rate, z) + log(dvc_dz(model.cosmology, z)) -
         log(prior) - log(detector_to_source_jacobian_q(z, model.cosmology)) - log1p(z) + _rate_scale(model)
+end
+
+function log_event_rate(model::SpinWeightedRate, args...)
+    nbase = length(args) - length(model.spin_columns) - 1
+    nbase >= 1 || throw(ArgumentError("SpinWeightedRate requires base event columns, spin columns, and prior"))
+    base_args = args[1:nbase]
+    spin_args = args[(nbase + 1):(end - 1)]
+    prior = args[end]
+    return log_event_rate(model.base, base_args..., prior) + logpdf(model.spin_prior, spin_args...)
 end
 
 end

@@ -60,6 +60,10 @@ _required_columns(::CBCMchirpQRate) = (:chirp_mass, :mass_ratio, :luminosity_dis
 _required_columns(::CBCSingleMassRate) = (:mass_1, :luminosity_distance)
 _required_columns(::CBCTotalMassQRate) = (:total_mass, :mass_ratio, :luminosity_distance)
 _required_columns(::CBCRedshiftPrimaryQRate) = (:mass_1, :mass_ratio, :luminosity_distance)
+_required_columns(model::SpinWeightedRate) = (_required_columns(model.base)..., model.spin_columns...)
+
+_is_scale_free(model) = getproperty(model, :scale_free)
+_is_scale_free(model::SpinWeightedRate) = _is_scale_free(model.base)
 
 function _event_logweights(model, ps::PosteriorSamples)
     cols = map(name -> column(ps, name), _required_columns(model))
@@ -145,7 +149,7 @@ function _evaluate(model, data::PopulationData, options::LikelihoodOptions)
     diagnostics = _diagnose(logw_events, logw_inj, data, log_xi, options)
     diagnostics.accepted || return -Inf, diagnostics
 
-    if options.shape_only || getproperty(model, :scale_free)
+    if options.shape_only || _is_scale_free(model)
         value = sum(log_event_means) - length(data.posteriors) * log_xi
     elseif options.poisson
         value = -diagnostics.N_expected + length(data.posteriors) * log(data.injections.Tobs) + sum(log_event_means)

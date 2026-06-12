@@ -84,7 +84,7 @@ Status meanings:
 | `CBC_rate_total_mass_q` | `CBCTotalMassQRate` | implemented/renamed | Detector `(Mtot, q, dL)`. |
 | `CBC_rate_m1_given_redshift_q` | `CBCRedshiftPrimaryQRate` | implemented/renamed | Detector `(m1, q, dL)` with `p(m1|z)`. |
 | `CBC_rate_m1_given_redshift_m2` | `CBCVanillaRate` with `RedshiftConditionalMassDistribution` | implemented/merged | Detector `(m1, m2, dL)` with `p(m1|z)p(m2|m1)`. |
-| spin variants | compose spin priors with rate models | partial | Core spin priors exist; all Python combinations need more regression fixtures. |
+| spin variants | `SpinWeightedRate(base, spin_prior)` | implemented/merged | Composes component-spin or effective-spin priors with any first-version CBC rate model. |
 | catalog/EM counterpart rates | placeholder modules | planned | First-version exclusion. |
 | stochastic mixed rates | placeholder modules | planned | First-version exclusion. |
 
