@@ -61,10 +61,23 @@ The example in `examples/dynesty_population_inference.jl` loads local
 ## Cosmology
 
 The Python implementation delegates baseline distances to Astropy and tabulates
-interpolants. The Julia version computes flat `ΛCDM` distances with `QuadGK`
-and inverts luminosity distance with `Roots`. This is simpler for the first
-native version and avoids a Python dependency. Future performance work can add
-explicit cosmology workspaces or interpolation caches.
+interpolants. The Julia version computes flat `ΛCDM`, constant-`w`, and CPL
+`w0-wa` distances with `QuadGK` and inverts luminosity distance with `Roots`.
+This is simpler for the first native version and avoids a Python dependency.
+Future performance work can add explicit cosmology workspaces or interpolation
+caches.
+
+## Model Composition
+
+Python wrapper classes such as `PowerLaw_PowerLaw`,
+`PowerLaw_PowerLaw_Gaussian`, and redshift-linear mass wrappers are represented
+by composable Julia pieces: `PowerLawStationary`, `PowerLawLinear`,
+`GaussianStationary`, `GaussianLinear`, and `MixtureMassPrior`. This keeps the
+sampler-facing API compact while covering the same first-version model family.
+
+Additional CBC coordinate systems are expressed as separate rate model structs:
+`CBCMass1Rate`, `CBCMchirpQRate`, `CBCSingleMassRate`,
+`CBCTotalMassQRate`, and `CBCRedshiftPrimaryQRate`.
 
 ## Performance Strategy
 
@@ -83,8 +96,8 @@ inside likelihood loops. Further performance work should focus on:
 - The simulation helpers are quick, seeded mock-data tools rather than full
   detector simulations.
 - Several advanced spin/redshift-evolving combinations are represented by
-  composable primitives but still need Python-reference fixtures before being
-  marked fully migrated.
+  composable primitives but still need Python-reference fixtures before their
+  numerical tolerances are locked down.
 
 ## Planned And Excluded Features
 

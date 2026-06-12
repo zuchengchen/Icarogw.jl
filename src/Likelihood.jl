@@ -53,24 +53,28 @@ Base.@kwdef struct LikelihoodDiagnostics
     reason::String = ""
 end
 
+_required_columns(::SimplePowerLawPopulation) = (:mass_1, :mass_2, :luminosity_distance)
+_required_columns(::CBCVanillaRate) = (:mass_1, :mass_2, :luminosity_distance)
+_required_columns(::CBCMass1Rate) = (:mass_1, :mass_ratio, :luminosity_distance)
+_required_columns(::CBCMchirpQRate) = (:chirp_mass, :mass_ratio, :luminosity_distance)
+_required_columns(::CBCSingleMassRate) = (:mass_1, :luminosity_distance)
+_required_columns(::CBCTotalMassQRate) = (:total_mass, :mass_ratio, :luminosity_distance)
+_required_columns(::CBCRedshiftPrimaryQRate) = (:mass_1, :mass_ratio, :luminosity_distance)
+
 function _event_logweights(model, ps::PosteriorSamples)
-    m1 = column(ps, :mass_1)
-    m2 = column(ps, :mass_2)
-    dl = column(ps, :luminosity_distance)
+    cols = map(name -> column(ps, name), _required_columns(model))
     out = Vector{Float64}(undef, length(ps.prior))
     @inbounds for i in eachindex(out)
-        out[i] = log_event_rate(model, m1[i], m2[i], dl[i], ps.prior[i])
+        out[i] = log_event_rate(model, (col[i] for col in cols)..., ps.prior[i])
     end
     return out
 end
 
 function _injection_logweights(model, inj::InjectionSet)
-    m1 = column(inj, :mass_1)
-    m2 = column(inj, :mass_2)
-    dl = column(inj, :luminosity_distance)
+    cols = map(name -> column(inj, name), _required_columns(model))
     out = Vector{Float64}(undef, length(inj.prior))
     @inbounds for i in eachindex(out)
-        out[i] = log_event_rate(model, m1[i], m2[i], dl[i], inj.prior[i])
+        out[i] = log_event_rate(model, (col[i] for col in cols)..., inj.prior[i])
     end
     return out
 end

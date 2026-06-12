@@ -22,6 +22,8 @@ Status meanings:
 | `base_cosmology.ddl_by_dz_at_z` | `ddl_dz` | implemented/renamed | Analytic for flat LCDM, finite difference for wrappers. |
 | `base_cosmology.sample_comoving_volume` | `sample_comoving_volume` | implemented/renamed | Seeded RNG supported. |
 | `astropycosmology` | `FlatLambdaCDM` | implemented/renamed | Native Julia, no Astropy dependency. |
+| `FlatwCDM_wrap` | `FlatwCDM` | implemented/renamed | Constant-`w` native cosmology. |
+| `Flatw0waCDM_wrap` | `Flatw0waCDM` | implemented/renamed | CPL `w0-wa` native cosmology. |
 | `eps0_astropycosmology` | `Epsilon0Cosmology` | implemented/renamed | Luminosity-distance wrapper. |
 | `Xi0_astropycosmology` | `Xi0Cosmology` | implemented/renamed | Luminosity-distance wrapper. |
 | `extraD_astropycosmology` | `ExtraDCosmology` | implemented/renamed | Luminosity-distance wrapper. |
@@ -42,6 +44,10 @@ Status meanings:
 | `source2detector` | `source_to_detector`, `source2detector` | implemented/renamed | Alias retained. |
 | `detector2source` | `detector_to_source`, `detector2source` | implemented/renamed | Alias retained. |
 | Jacobian helpers | `detector_to_source_jacobian*`, `source_to_detector_jacobian` | implemented/renamed | Used in likelihood. |
+| `cred_interval` | `cred_interval` | implemented | Gaussian symmetric interval probability. |
+| `chi_effective_prior_from_aligned_spins` | same name | implemented | Native piecewise density. |
+| `chi_effective_prior_from_isotropic_spins` | same name | implemented | Native convolution/quadrature density. |
+| `chi_p_prior_from_isotropic_spins` | same name | implemented | Native maximum-distribution density. |
 | `chi_eff_from_spins`, `chi_p_from_spins`, `cartestianspins2chis` | `chi_eff_from_spins`, `chi_p_from_spins`, `cartesian_spins_to_chis` | implemented/renamed | Core spin conversions. |
 | skymap/HEALPix helpers | catalog/skymap future module | planned | Not first-version core. |
 
@@ -61,6 +67,8 @@ Status meanings:
 | `paired_2dimpdf` | `PairedMassDistribution` | implemented/renamed | Pairing by mass ratio power. |
 | `piecewise_constant_2d_distribution_normalized` | `PiecewiseConstant2D` | implemented/renamed | Triangular checkerboard. |
 | low-pass / dip smoothers | `LowpassSmoothedProb`, `SmoothedPlusDipProb` | implemented | Native numerical normalization. |
+| `PowerLawStationary`, `PowerLawLinear`, `GaussianStationary`, `GaussianLinear` | same names | implemented | Redshift-stationary and redshift-linear mass components. |
+| `PowerLaw_PowerLaw`, `PowerLaw_PowerLaw_PowerLaw`, `PowerLaw_PowerLaw_Gaussian`, redshift-linear mixture wrappers | `MixtureMassPrior` with stationary/linear components | implemented/merged | Julia-native composable mixture abstraction. |
 | spin prior wrappers | `DefaultSpinPrior`, `GaussianSpinPrior` | implemented/merged | Core population spin priors. |
 | Python mutable wrapper classes | `ParameterSchema` + model structs | merged | Julia hot path uses vectors and immutable models. |
 
@@ -71,7 +79,11 @@ Status meanings:
 | `CBC_vanilla_rate` | `CBCVanillaRate`, `SimplePowerLawPopulation` | implemented/renamed | Detector `(m1, m2, dL)`. |
 | `CBC_rate_m1_q` | `CBCMass1Rate` | implemented/renamed | Detector `(m1, q, dL)`. |
 | `CBC_rate_mchirp_q` | `CBCMchirpQRate` | implemented/renamed | Detector `(Mc, q, dL)`. |
-| spin variants | compose spin priors with rate models | partial/planned | Core spin priors exist; all Python combinations need more regression fixtures. |
+| `CBC_rate_m_given_redshift` | `CBCSingleMassRate` | implemented/renamed | Detector `(m, dL)` with optional redshift-dependent mass prior. |
+| `CBC_rate_total_mass_q` | `CBCTotalMassQRate` | implemented/renamed | Detector `(Mtot, q, dL)`. |
+| `CBC_rate_m1_given_redshift_q` | `CBCRedshiftPrimaryQRate` | implemented/renamed | Detector `(m1, q, dL)` with `p(m1|z)`. |
+| `CBC_rate_m1_given_redshift_m2` | `CBCVanillaRate` with redshift-aware mass distribution | partial | Needs fixture-backed validation before status becomes fully implemented. |
+| spin variants | compose spin priors with rate models | partial | Core spin priors exist; all Python combinations need more regression fixtures. |
 | catalog/EM counterpart rates | placeholder modules | planned | First-version exclusion. |
 | stochastic mixed rates | placeholder modules | planned | First-version exclusion. |
 

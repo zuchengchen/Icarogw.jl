@@ -10,8 +10,9 @@ This repository is in migration. The current milestone contains a working
 first vertical slice:
 
 - flat `ΛCDM` cosmology and modified-gravity luminosity-distance wrappers
+- constant-`w` and CPL `w0-wa` flat cosmologies
 - source/detector mass and distance conversions
-- core mass, mass-ratio, spin, and redshift priors/rates
+- core mass, mass-ratio, spin, redshift-linear mass, and redshift priors/rates
 - posterior and injection containers with CSV/HDF5 IO
 - selection-corrected hierarchical likelihoods with diagnostics
 - no-event, Poisson-rate, and shape-only likelihood modes

@@ -139,18 +139,14 @@ column(inj::InjectionSet, name::Symbol) = view(inj.values, :, column_index(inj.n
 Check required columns, finite values, positive priors, and length consistency.
 """
 function validate(ps::PosteriorSamples)
-    for name in (:mass_1, :mass_2, :luminosity_distance)
-        name in ps.names || throw(ArgumentError("posterior $(ps.event_name) missing required column :$name"))
-    end
+    !isempty(ps.names) || throw(ArgumentError("posterior $(ps.event_name) must contain at least one data column"))
     size(ps.values, 1) == length(ps.prior) || throw(ArgumentError("posterior prior length mismatch"))
     all(isfinite, ps.values) || throw(ArgumentError("posterior contains non-finite values"))
     all(>(0), ps.prior) || throw(ArgumentError("posterior prior must be positive"))
     return ps
 end
 function validate(inj::InjectionSet)
-    for name in (:mass_1, :mass_2, :luminosity_distance)
-        name in inj.names || throw(ArgumentError("injections missing required column :$name"))
-    end
+    !isempty(inj.names) || throw(ArgumentError("injections must contain at least one data column"))
     size(inj.values, 1) == length(inj.prior) || throw(ArgumentError("injection prior length mismatch"))
     all(isfinite, inj.values) || throw(ArgumentError("injections contain non-finite values"))
     all(>(0), inj.prior) || throw(ArgumentError("injection prior must be positive"))

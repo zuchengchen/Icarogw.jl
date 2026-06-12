@@ -16,6 +16,9 @@ export AbstractRedshiftRate,
     CBCVanillaRate,
     CBCMass1Rate,
     CBCMchirpQRate,
+    CBCSingleMassRate,
+    CBCTotalMassQRate,
+    CBCRedshiftPrimaryQRate,
     SimplePowerLawPopulation,
     materialize,
     log_event_rate,
@@ -171,6 +174,56 @@ end
 CBCMchirpQRate(cosmology, mchirp_distribution, q_distribution, redshift_rate; R0=1.0, scale_free=false) =
     CBCMchirpQRate(cosmology, mchirp_distribution, q_distribution, redshift_rate, float(R0), Bool(scale_free))
 
+"""
+    CBCSingleMassRate(cosmology, mass_distribution, redshift_rate; R0=1, scale_free=false)
+
+Rate model for detector-frame `(mass_1, luminosity_distance)` workflows such
+as single-object or one-dimensional mass analyses.
+"""
+struct CBCSingleMassRate{C<:AbstractCosmology,M,R<:AbstractRedshiftRate} <: AbstractCBCRateModel
+    cosmology::C
+    mass_distribution::M
+    redshift_rate::R
+    R0::Float64
+    scale_free::Bool
+end
+CBCSingleMassRate(cosmology, mass_distribution, redshift_rate; R0=1.0, scale_free=false) =
+    CBCSingleMassRate(cosmology, mass_distribution, redshift_rate, float(R0), Bool(scale_free))
+
+"""
+    CBCTotalMassQRate(cosmology, total_mass_distribution, q_distribution, redshift_rate; R0=1, scale_free=false)
+
+Rate model for detector-frame `(total_mass, mass_ratio, luminosity_distance)`.
+"""
+struct CBCTotalMassQRate{C<:AbstractCosmology,M,Q,R<:AbstractRedshiftRate} <: AbstractCBCRateModel
+    cosmology::C
+    total_mass_distribution::M
+    q_distribution::Q
+    redshift_rate::R
+    R0::Float64
+    scale_free::Bool
+end
+CBCTotalMassQRate(cosmology, total_mass_distribution, q_distribution, redshift_rate; R0=1.0, scale_free=false) =
+    CBCTotalMassQRate(cosmology, total_mass_distribution, q_distribution, redshift_rate, float(R0), Bool(scale_free))
+
+"""
+    CBCRedshiftPrimaryQRate(cosmology, mass_distribution, q_distribution, redshift_rate; R0=1, scale_free=false)
+
+Rate model for detector-frame `(mass_1, mass_ratio, luminosity_distance)` where
+the primary-mass distribution may depend on redshift through
+`logpdf(mass_distribution, m1_source, z)`.
+"""
+struct CBCRedshiftPrimaryQRate{C<:AbstractCosmology,M,Q,R<:AbstractRedshiftRate} <: AbstractCBCRateModel
+    cosmology::C
+    mass_distribution::M
+    q_distribution::Q
+    redshift_rate::R
+    R0::Float64
+    scale_free::Bool
+end
+CBCRedshiftPrimaryQRate(cosmology, mass_distribution, q_distribution, redshift_rate; R0=1.0, scale_free=false) =
+    CBCRedshiftPrimaryQRate(cosmology, mass_distribution, q_distribution, redshift_rate, float(R0), Bool(scale_free))
+
 const _simple_schema = ParameterSchema(
     ParameterSpec(:alpha; lower=0.5, upper=5.0, default=2.0, description="positive primary-mass power-law slope; density uses -alpha"),
     ParameterSpec(:beta; lower=-2.0, upper=6.0, default=1.0, description="secondary conditional power-law exponent"),
@@ -244,6 +297,33 @@ function log_event_rate(model::CBCMchirpQRate, mchirp, q, luminosity_distance, p
     z = redshift_at_luminosity_distance(model.cosmology, luminosity_distance)
     mcs = mchirp / (1 + z)
     return logpdf(model.chirp_mass_distribution, mcs) + logpdf(model.q_distribution, q) +
+        log_rate(model.redshift_rate, z) + log(dvc_dz(model.cosmology, z)) -
+        log(prior) - log(detector_to_source_jacobian_q(z, model.cosmology)) - log1p(z) + _rate_scale(model)
+end
+
+function log_event_rate(model::CBCSingleMassRate, mass_1, luminosity_distance, prior)
+    prior > 0 || return -Inf
+    z = redshift_at_luminosity_distance(model.cosmology, luminosity_distance)
+    ms = mass_1 / (1 + z)
+    return logpdf(model.mass_distribution, ms) + log_rate(model.redshift_rate, z) +
+        log(dvc_dz(model.cosmology, z)) - log(prior) -
+        log(detector_to_source_jacobian_single_mass(z, model.cosmology)) - log1p(z) + _rate_scale(model)
+end
+
+function log_event_rate(model::CBCTotalMassQRate, total_mass, q, luminosity_distance, prior)
+    prior > 0 || return -Inf
+    z = redshift_at_luminosity_distance(model.cosmology, luminosity_distance)
+    mts = total_mass / (1 + z)
+    return logpdf(model.total_mass_distribution, mts) + logpdf(model.q_distribution, q) +
+        log_rate(model.redshift_rate, z) + log(dvc_dz(model.cosmology, z)) -
+        log(prior) - log(detector_to_source_jacobian_q(z, model.cosmology)) - log1p(z) + _rate_scale(model)
+end
+
+function log_event_rate(model::CBCRedshiftPrimaryQRate, mass_1, q, luminosity_distance, prior)
+    prior > 0 || return -Inf
+    z = redshift_at_luminosity_distance(model.cosmology, luminosity_distance)
+    m1s = mass_1 / (1 + z)
+    return logpdf(model.mass_distribution, m1s, z) + logpdf(model.q_distribution, q) +
         log_rate(model.redshift_rate, z) + log(dvc_dz(model.cosmology, z)) -
         log(prior) - log(detector_to_source_jacobian_q(z, model.cosmology)) - log1p(z) + _rate_scale(model)
 end

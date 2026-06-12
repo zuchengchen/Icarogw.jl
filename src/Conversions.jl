@@ -1,8 +1,11 @@
 module Conversions
 
 using ..Cosmology
+using Distributions
+using QuadGK
 
-export chirp_mass,
+export cred_interval,
+    chirp_mass,
     mass_ratio,
     f_gw_isco,
     L2M,
@@ -19,7 +22,18 @@ export chirp_mass,
     source_to_detector_jacobian,
     chi_eff_from_spins,
     chi_p_from_spins,
-    cartesian_spins_to_chis
+    cartesian_spins_to_chis,
+    chi_effective_prior_from_aligned_spins,
+    chi_effective_prior_from_isotropic_spins,
+    chi_p_prior_from_isotropic_spins
+
+"""
+    cred_interval(sigma)
+
+Convert a symmetric Gaussian error width in units of `sigma` to enclosed
+credible probability.
+"""
+cred_interval(sigma::Real) = cdf(Normal(), sigma) - cdf(Normal(), -sigma)
 
 """
     chirp_mass(m1, m2)
@@ -136,6 +150,8 @@ source_to_detector_jacobian(z, cosmology::AbstractCosmology) =
 Effective aligned spin `(chi1*cos1 + q*chi2*cos2) / (1 + q)`.
 """
 chi_eff_from_spins(chi1, chi2, cos1, cos2, q) = (chi1 * cos1 + q * chi2 * cos2) / (1 + q)
+chi_eff_from_spins(chi1::AbstractArray, chi2::AbstractArray, cos1::AbstractArray, cos2::AbstractArray, q) =
+    chi_eff_from_spins.(chi1, chi2, cos1, cos2, q)
 
 """
     chi_p_from_spins(chi1, chi2, cos1, cos2, q)
@@ -147,6 +163,79 @@ function chi_p_from_spins(chi1, chi2, cos1, cos2, q)
     s2p = chi2 * sqrt(max(0, 1 - cos2^2))
     return max(s1p, q * (4q + 3) / (4 + 3q) * s2p)
 end
+chi_p_from_spins(chi1::AbstractArray, chi2::AbstractArray, cos1::AbstractArray, cos2::AbstractArray, q) =
+    chi_p_from_spins.(chi1, chi2, cos1, cos2, q)
+
+"""
+    chi_effective_prior_from_aligned_spins(q, amax, x)
+
+Conditional prior density `p(chi_eff | q)` for uniform aligned component spins
+with maximum magnitude `amax`. This follows the piecewise expression used in
+Python `icarogw`.
+"""
+function chi_effective_prior_from_aligned_spins(q::Real, amax::Real, x::Real)
+    abs(x) > amax && return 0.0
+    edge = amax * (1 - q) / (1 + q)
+    if x > edge
+        return (1 + q)^2 * (amax - x) / (4q * amax^2)
+    elseif x < -edge
+        return (1 + q)^2 * (amax + x) / (4q * amax^2)
+    else
+        return (1 + q) / (2amax)
+    end
+end
+chi_effective_prior_from_aligned_spins(q, amax, xs::AbstractArray) =
+    chi_effective_prior_from_aligned_spins.(q, amax, xs)
+
+_uniform_spin_z_density(amax, y) =
+    abs(y) >= amax ? 0.0 : log(amax / max(abs(y), eps(Float64))) / (2amax)
+
+"""
+    chi_effective_prior_from_isotropic_spins(q, amax, x)
+
+Conditional prior density `p(chi_eff | q)` for uniform spin magnitudes and
+isotropic tilts. The implementation evaluates the convolution of the two
+component spin-z distributions by adaptive quadrature, avoiding a Python bridge
+or dilogarithm dependency.
+"""
+function chi_effective_prior_from_isotropic_spins(q::Real, amax::Real, x::Real)
+    abs(x) >= amax && return 0.0
+    scale1 = 1 / (1 + q)
+    scale2 = q / (1 + q)
+    f1(y) = _uniform_spin_z_density(amax, y)
+    f2(y) = _uniform_spin_z_density(amax, y)
+    lo = max(-amax, ((x - scale2 * amax) / scale1))
+    hi = min(amax, ((x + scale2 * amax) / scale1))
+    lo < hi || return 0.0
+    val, _ = quadgk(y -> f1(y) * f2((x - scale1 * y) / scale2) / scale2, lo, hi; rtol=1e-6)
+    return max(0.0, val)
+end
+chi_effective_prior_from_isotropic_spins(q, amax, xs::AbstractArray) =
+    chi_effective_prior_from_isotropic_spins.(q, amax, xs)
+
+_chi_perp_density(amax, x) = 0 <= x < amax ? acos(clamp(x / amax, -1, 1)) / amax : 0.0
+_scaled_chi_perp_density(amax, scale, x) = scale <= 0 ? 0.0 : _chi_perp_density(amax, x / scale) / scale
+_chi_perp_cdf(amax, x) = x <= 0 ? 0.0 : x >= amax ? 1.0 :
+    (x * acos(x / amax) - sqrt(max(0.0, amax^2 - x^2)) + amax) / amax
+_scaled_chi_perp_cdf(amax, scale, x) = scale <= 0 ? 1.0 : _chi_perp_cdf(amax, x / scale)
+
+"""
+    chi_p_prior_from_isotropic_spins(q, amax, x)
+
+Conditional prior density `p(chi_p | q)` for isotropic component spins. It is
+computed as the density of the maximum of the primary in-plane spin and the
+mass-ratio-scaled secondary in-plane spin.
+"""
+function chi_p_prior_from_isotropic_spins(q::Real, amax::Real, x::Real)
+    scale = q * (4q + 3) / (4 + 3q)
+    f1 = _chi_perp_density(amax, x)
+    F1 = _chi_perp_cdf(amax, x)
+    f2 = _scaled_chi_perp_density(amax, scale, x)
+    F2 = _scaled_chi_perp_cdf(amax, scale, x)
+    return f1 * F2 + f2 * F1
+end
+chi_p_prior_from_isotropic_spins(q, amax, xs::AbstractArray) =
+    chi_p_prior_from_isotropic_spins.(q, amax, xs)
 
 """
     cartesian_spins_to_chis(s1x, s1y, s1z, s2x, s2y, s2z, q)

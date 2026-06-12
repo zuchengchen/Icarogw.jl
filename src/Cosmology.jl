@@ -7,6 +7,8 @@ using Roots
 export COST_C,
     AbstractCosmology,
     FlatLambdaCDM,
+    FlatwCDM,
+    Flatw0waCDM,
     Epsilon0Cosmology,
     Xi0Cosmology,
     ExtraDCosmology,
@@ -35,6 +37,32 @@ docstring explicitly says Gpc.
 Base.@kwdef struct FlatLambdaCDM <: AbstractCosmology
     H0::Float64 = 67.7
     Om0::Float64 = 0.308
+    zmax::Float64 = 10.0
+end
+
+"""
+    FlatwCDM(; H0=67.7, Om0=0.308, w0=-1, zmax=10)
+
+Flat dark-energy cosmology with constant equation-of-state parameter `w0`.
+Setting `w0=-1` recovers `FlatLambdaCDM`.
+"""
+Base.@kwdef struct FlatwCDM <: AbstractCosmology
+    H0::Float64 = 67.7
+    Om0::Float64 = 0.308
+    w0::Float64 = -1.0
+    zmax::Float64 = 10.0
+end
+
+"""
+    Flatw0waCDM(; H0=67.7, Om0=0.308, w0=-1, wa=0, zmax=10)
+
+Flat CPL dark-energy cosmology with `w(z) = w0 + wa*z/(1+z)`.
+"""
+Base.@kwdef struct Flatw0waCDM <: AbstractCosmology
+    H0::Float64 = 67.7
+    Om0::Float64 = 0.308
+    w0::Float64 = -1.0
+    wa::Float64 = 0.0
     zmax::Float64 = 10.0
 end
 
@@ -98,11 +126,13 @@ struct AlphaLogCosmology{C<:AbstractCosmology} <: AbstractCosmology
     a3::Float64
 end
 
-zmax(c::FlatLambdaCDM) = c.zmax
+zmax(c::Union{FlatLambdaCDM,FlatwCDM,Flatw0waCDM}) = c.zmax
 zmax(c::Union{Epsilon0Cosmology,Xi0Cosmology,ExtraDCosmology,PlanckMassCosmology,AlphaLogCosmology}) = zmax(c.base)
 
 efunc(c::FlatLambdaCDM, z::Real) = sqrt(c.Om0 * (1 + z)^3 + (1 - c.Om0))
-hubble(c::FlatLambdaCDM, z::Real) = c.H0 * efunc(c, z)
+efunc(c::FlatwCDM, z::Real) = sqrt(c.Om0 * (1 + z)^3 + (1 - c.Om0) * (1 + z)^(3 * (1 + c.w0)))
+efunc(c::Flatw0waCDM, z::Real) = sqrt(c.Om0 * (1 + z)^3 + (1 - c.Om0) * (1 + z)^(3 * (1 + c.w0 + c.wa)) * exp(-3 * c.wa * z / (1 + z)))
+hubble(c::Union{FlatLambdaCDM,FlatwCDM,Flatw0waCDM}, z::Real) = c.H0 * efunc(c, z)
 
 function _check_z(c::AbstractCosmology, z::Real)
     0 <= z <= zmax(c) || throw(ArgumentError("redshift $z outside supported range [0, $(zmax(c))]"))
@@ -121,7 +151,7 @@ end
 
 Line-of-sight comoving distance in Mpc for redshift `z`.
 """
-function comoving_distance(c::FlatLambdaCDM, z::Real)
+function comoving_distance(c::Union{FlatLambdaCDM,FlatwCDM,Flatw0waCDM}, z::Real)
     z = _check_z(c, z)
     z == 0 && return 0.0
     val, _ = quadgk(x -> COST_C / hubble(c, x), 0.0, z; rtol=1e-9)
@@ -137,7 +167,7 @@ comoving_distance(c::AbstractCosmology, z::AbstractArray) = map(x -> comoving_di
 Luminosity distance in Mpc. Modified-gravity wrappers alter this value but keep
 the background comoving volume from their base cosmology.
 """
-luminosity_distance(c::FlatLambdaCDM, z::Real) = (1 + _check_z(c, z)) * comoving_distance(c, z)
+luminosity_distance(c::Union{FlatLambdaCDM,FlatwCDM,Flatw0waCDM}, z::Real) = (1 + _check_z(c, z)) * comoving_distance(c, z)
 luminosity_distance(c::Epsilon0Cosmology, z::Real) = luminosity_distance(c.base, z) * (1 + z)^c.eps0
 luminosity_distance(c::Xi0Cosmology, z::Real) = luminosity_distance(c.base, z) * (c.Xi0 + (1 - c.Xi0) * (1 + z)^(-c.n))
 function luminosity_distance(c::ExtraDCosmology, z::Real)
@@ -185,7 +215,7 @@ comoving_volume(c::AbstractCosmology, z::AbstractArray) = map(x -> comoving_volu
 Differential comoving volume per steradian in Gpc^3 sr^-1.
 """
 function dvc_dz_dOmega(c::AbstractCosmology, z::Real)
-    bg = c isa FlatLambdaCDM ? c : c.base
+    bg = c isa Union{FlatLambdaCDM,FlatwCDM,Flatw0waCDM} ? c : c.base
     z = _check_z(bg, z)
     dm = comoving_distance(bg, z)
     return (COST_C / hubble(bg, z)) * dm^2 / 1e9
@@ -205,7 +235,7 @@ dvc_dz(c::AbstractCosmology, z::AbstractArray) = map(x -> dvc_dz(c, x), z)
 
 Derivative of luminosity distance with respect to redshift, in Mpc.
 """
-function ddl_dz(c::FlatLambdaCDM, z::Real)
+function ddl_dz(c::Union{FlatLambdaCDM,FlatwCDM,Flatw0waCDM}, z::Real)
     z = _check_z(c, z)
     return luminosity_distance(c, z) / (1 + z) + COST_C * (1 + z) / hubble(c, z)
 end

@@ -23,6 +23,11 @@ export AbstractPrior,
     PiecewiseConstant2D,
     LowpassSmoothedProb,
     SmoothedPlusDipProb,
+    PowerLawStationary,
+    PowerLawLinear,
+    GaussianStationary,
+    GaussianLinear,
+    MixtureMassPrior,
     DefaultSpinPrior,
     GaussianSpinPrior,
     logpdf,
@@ -46,6 +51,8 @@ _bounds_logpdf(x, lo, hi, value) = _inrange(x, lo, hi) ? value : -Inf
 logpdf(p::AbstractPrior, x::AbstractArray) = map(v -> logpdf(p, v), x)
 pdf(p::AbstractPrior, x) = exp.(logpdf(p, x))
 cdf(p::AbstractPrior, x::AbstractArray) = map(v -> cdf(p, v), x)
+logpdf(p::AbstractPrior, x::AbstractArray, z::AbstractArray) = map(logpdf, Ref(p), x, z)
+pdf(p::AbstractPrior, x, z) = exp.(logpdf(p, x, z))
 
 """
     PowerLaw(min, max, alpha)
@@ -508,6 +515,138 @@ function logpdf(p::SmoothedPlusDipProb, x::Real)
 end
 cdf(p::SmoothedPlusDipProb, x::Real) =
     x <= p.min ? 0.0 : x >= p.max ? 1.0 : quadgk(t -> pdf(p, t), p.min, x; rtol=1e-5)[1]
+
+"""
+    PowerLawStationary(alpha, mmin, mmax)
+
+Population mass model with density proportional to `m^(-alpha)` on
+`[mmin, mmax]`. This mirrors Python `PowerLawStationary`.
+"""
+struct PowerLawStationary <: AbstractPrior
+    alpha::Float64
+    min::Float64
+    max::Float64
+    prior::PowerLaw
+end
+PowerLawStationary(alpha, mmin, mmax) =
+    PowerLawStationary(float(alpha), float(mmin), float(mmax), PowerLaw(mmin, mmax, -alpha))
+logpdf(p::PowerLawStationary, m::Real) = logpdf(p.prior, m)
+cdf(p::PowerLawStationary, m::Real) = cdf(p.prior, m)
+
+"""
+    PowerLawLinear(alpha_z0, alpha_z1, mmin_z0, mmin_z1, mmax_z0, mmax_z1)
+
+Redshift-linear power-law mass model. At redshift `z`, the exponent is
+`-(alpha_z0 + alpha_z1*z)` and support is
+`[mmin_z0 + mmin_z1*z, mmax_z0 + mmax_z1*z]`.
+"""
+struct PowerLawLinear <: AbstractPrior
+    alpha_z0::Float64
+    alpha_z1::Float64
+    mmin_z0::Float64
+    mmin_z1::Float64
+    mmax_z0::Float64
+    mmax_z1::Float64
+    min::Float64
+    max::Float64
+end
+function PowerLawLinear(alpha_z0, alpha_z1, mmin_z0, mmin_z1, mmax_z0, mmax_z1)
+    return PowerLawLinear(float(alpha_z0), float(alpha_z1), float(mmin_z0), float(mmin_z1),
+        float(mmax_z0), float(mmax_z1), -Inf, Inf)
+end
+function logpdf(p::PowerLawLinear, m::Real, z::Real)
+    lo = p.mmin_z0 + p.mmin_z1 * z
+    hi = p.mmax_z0 + p.mmax_z1 * z
+    lo < hi || return -Inf
+    return logpdf(PowerLaw(lo, hi, -(p.alpha_z0 + p.alpha_z1 * z)), m)
+end
+
+"""
+    GaussianStationary(mu, sigma, mmin)
+
+Gaussian mass model truncated below `mmin` and unbounded above.
+"""
+struct GaussianStationary <: AbstractPrior
+    mu::Float64
+    sigma::Float64
+    min::Float64
+    max::Float64
+    base::Normal{Float64}
+    norm::Float64
+end
+function GaussianStationary(mu, sigma, mmin)
+    sigma > 0 || throw(ArgumentError("sigma must be positive"))
+    base = Normal(float(mu), float(sigma))
+    norm = 1 - Distributions.cdf(base, float(mmin))
+    return GaussianStationary(float(mu), float(sigma), float(mmin), Inf, base, norm)
+end
+logpdf(p::GaussianStationary, m::Real) =
+    m < p.min ? -Inf : Distributions.logpdf(p.base, m) - log(p.norm)
+cdf(p::GaussianStationary, m::Real) =
+    m <= p.min ? 0.0 : (Distributions.cdf(p.base, m) - Distributions.cdf(p.base, p.min)) / p.norm
+
+"""
+    GaussianLinear(mu_z0, mu_z1, sigma_z0, sigma_z1, mmin)
+
+Redshift-linear Gaussian mass model truncated below `mmin`.
+"""
+struct GaussianLinear <: AbstractPrior
+    mu_z0::Float64
+    mu_z1::Float64
+    sigma_z0::Float64
+    sigma_z1::Float64
+    min::Float64
+    max::Float64
+end
+function GaussianLinear(mu_z0, mu_z1, sigma_z0, sigma_z1, mmin)
+    return GaussianLinear(float(mu_z0), float(mu_z1), float(sigma_z0), float(sigma_z1), float(mmin), Inf)
+end
+function logpdf(p::GaussianLinear, m::Real, z::Real)
+    sigma = p.sigma_z0 + p.sigma_z1 * z
+    sigma > 0 || return -Inf
+    return logpdf(GaussianStationary(p.mu_z0 + p.mu_z1 * z, sigma, p.min), m)
+end
+
+"""
+    MixtureMassPrior(components, weights)
+
+Mixture of one-dimensional mass priors. Components may be stationary
+(`logpdf(component, m)`) or redshift dependent (`logpdf(component, m, z)`).
+Weights are normalized at construction time.
+"""
+struct MixtureMassPrior{C<:Tuple} <: AbstractPrior
+    components::C
+    weights::Vector{Float64}
+    min::Float64
+    max::Float64
+end
+function MixtureMassPrior(components::Tuple, weights::AbstractVector{<:Real})
+    length(components) == length(weights) || throw(ArgumentError("components and weights length mismatch"))
+    all(>=(0), weights) || throw(ArgumentError("mixture weights must be non-negative"))
+    total = sum(weights)
+    total > 0 || throw(ArgumentError("at least one mixture weight must be positive"))
+    mins = [hasfield(typeof(c), :min) ? getfield(c, :min) : -Inf for c in components]
+    maxs = [hasfield(typeof(c), :max) ? getfield(c, :max) : Inf for c in components]
+    return MixtureMassPrior(components, Float64.(weights) ./ total, minimum(mins), maximum(maxs))
+end
+MixtureMassPrior(components::AbstractVector, weights::AbstractVector{<:Real}) =
+    MixtureMassPrior(Tuple(components), weights)
+_component_logpdf(c, m) = logpdf(c, m)
+_component_logpdf(c, m, z) = applicable(logpdf, c, m, z) ? logpdf(c, m, z) : logpdf(c, m)
+function logpdf(p::MixtureMassPrior, m::Real)
+    acc = -Inf
+    for (c, w) in zip(p.components, p.weights)
+        acc = logaddexp(acc, log(w) + _component_logpdf(c, m))
+    end
+    return acc
+end
+function logpdf(p::MixtureMassPrior, m::Real, z::Real)
+    acc = -Inf
+    for (c, w) in zip(p.components, p.weights)
+        acc = logaddexp(acc, log(w) + _component_logpdf(c, m, z))
+    end
+    return acc
+end
 
 """
     DefaultSpinPrior(alpha_chi, beta_chi, sigma_t, csi_spin)
