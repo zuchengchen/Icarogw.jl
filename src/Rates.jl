@@ -2,6 +2,7 @@ module Rates
 
 using ..Cosmology
 using ..Conversions
+using ..Catalog
 using ..Priors
 using ..Utils: logaddexp
 using SpecialFunctions: beta, gamma
@@ -20,11 +21,14 @@ export AbstractRedshiftRate,
     CBCSingleMassRate,
     CBCTotalMassQRate,
     CBCRedshiftPrimaryQRate,
+    CBCCatalogVanillaRate,
+    CBCCatalogSkyMapRate,
     MixtureRate,
     SpinWeightedRate,
     SimplePowerLawPopulation,
     materialize,
     log_event_rate,
+    log_injection_rate,
     parameter_schema
 
 abstract type AbstractRedshiftRate end
@@ -228,6 +232,51 @@ CBCRedshiftPrimaryQRate(cosmology, mass_distribution, q_distribution, redshift_r
     CBCRedshiftPrimaryQRate(cosmology, mass_distribution, q_distribution, redshift_rate, float(R0), Bool(scale_free))
 
 """
+    CBCCatalogVanillaRate(catalog, cosmology, mass_distribution, redshift_rate; Rgal=1, scale_free=false)
+
+Catalog-aware CBC rate for detector-frame `(mass_1, mass_2,
+luminosity_distance, sky_indices)` samples. Event weights use the
+sky-dependent catalog interpolant; injection weights use the sky-averaged
+catalog correction, matching Python `CBC_catalog_vanilla_rate`.
+"""
+struct CBCCatalogVanillaRate{Cat,C<:AbstractCosmology,B<:AbstractCosmology,M,R<:AbstractRedshiftRate} <: AbstractCBCRateModel
+    catalog::Cat
+    cosmology::C
+    background_cosmology::B
+    mass_distribution::M
+    redshift_rate::R
+    Rgal::Float64
+    scale_free::Bool
+end
+function CBCCatalogVanillaRate(catalog, cosmology::AbstractCosmology, mass_distribution, redshift_rate::AbstractRedshiftRate;
+    Rgal::Real=1.0, scale_free::Bool=false, background_cosmology=nothing)
+    bg = background_cosmology === nothing ? _background_cosmology(cosmology) : background_cosmology
+    return CBCCatalogVanillaRate(catalog, cosmology, bg, mass_distribution, redshift_rate, float(Rgal), scale_free)
+end
+
+"""
+    CBCCatalogSkyMapRate(catalog, cosmology, redshift_rate; Rgal=1, scale_free=false)
+
+Catalog-aware rate for skymap-only event coordinates
+`(luminosity_distance, sky_indices)`. Event weights use the sky-dependent
+catalog interpolant; injection weights use the Python empty-catalog
+completeness correction.
+"""
+struct CBCCatalogSkyMapRate{Cat,C<:AbstractCosmology,B<:AbstractCosmology,R<:AbstractRedshiftRate} <: AbstractCBCRateModel
+    catalog::Cat
+    cosmology::C
+    background_cosmology::B
+    redshift_rate::R
+    Rgal::Float64
+    scale_free::Bool
+end
+function CBCCatalogSkyMapRate(catalog, cosmology::AbstractCosmology, redshift_rate::AbstractRedshiftRate;
+    Rgal::Real=1.0, scale_free::Bool=false, background_cosmology=nothing)
+    bg = background_cosmology === nothing ? _background_cosmology(cosmology) : background_cosmology
+    return CBCCatalogSkyMapRate(catalog, cosmology, bg, redshift_rate, float(Rgal), scale_free)
+end
+
+"""
     SpinWeightedRate(base_model, spin_prior, spin_columns)
 
 Compose a CBC rate model with an independent spin prior. `spin_columns` must be
@@ -288,8 +337,11 @@ materialize(model::SimplePowerLawPopulation, theta=nothing; kwargs...) = theta =
 
 _rate_scale(model) = model.scale_free ? 0.0 : log(model.R0)
 _rate_scale(model::SpinWeightedRate) = _rate_scale(model.base)
+_rate_scale(model::Union{CBCCatalogVanillaRate,CBCCatalogSkyMapRate}) = model.scale_free ? 0.0 : log(model.Rgal)
 _rate_model_scale_free(model) = hasproperty(model, :scale_free) ? getproperty(model, :scale_free) : false
 _rate_model_scale_free(model::SpinWeightedRate) = _rate_model_scale_free(model.base)
+_background_cosmology(c::AbstractCosmology) = hasproperty(c, :base) ? getproperty(c, :base) : c
+_log_positive(x::Real) = x > 0 && isfinite(x) ? log(x) : -Inf
 
 """
     MixtureRate(rate1, rate2, lambda_pop)
@@ -379,6 +431,57 @@ function log_event_rate(model::CBCRedshiftPrimaryQRate, mass_1, q, luminosity_di
         log(prior) - log(detector_to_source_jacobian_q(z, model.cosmology)) - log1p(z) + _rate_scale(model)
 end
 
+function _catalog_effective_logdensity(model, z, sky_index; average::Bool)
+    dcat, dbg = Catalog.effective_galaxy_number_interpolant(model.catalog, z, sky_index, model.background_cosmology; average)
+    return _log_positive(dcat + dbg)
+end
+
+function _catalog_empty_logdensity(model::CBCCatalogSkyMapRate, z)
+    dngal = background_effective_galaxy_density(model.catalog.luminosity_function, -Inf, z, model.catalog.abs_magnitude_rate) *
+        dvc_dz_dOmega(model.background_cosmology, z)
+    return _log_positive(dngal)
+end
+
+function log_event_rate(model::CBCCatalogVanillaRate, mass_1, mass_2, luminosity_distance, sky_index, prior)
+    prior > 0 || return -Inf
+    m1s, m2s, z = detector_to_source(mass_1, mass_2, luminosity_distance, model.cosmology)
+    logdensity = _catalog_effective_logdensity(model, z, sky_index; average=false)
+    isfinite(logdensity) || return -Inf
+    mass_logpdf = applicable(logpdf, model.mass_distribution, m1s, m2s, z) ?
+        logpdf(model.mass_distribution, m1s, m2s, z) : logpdf(model.mass_distribution, m1s, m2s)
+    return mass_logpdf + log_rate(model.redshift_rate, z) + logdensity -
+        log1p(z) - log(detector_to_source_jacobian(z, model.cosmology)) - log(prior) + _rate_scale(model)
+end
+
+function log_injection_rate(model::CBCCatalogVanillaRate, mass_1, mass_2, luminosity_distance, sky_index, prior)
+    prior > 0 || return -Inf
+    m1s, m2s, z = detector_to_source(mass_1, mass_2, luminosity_distance, model.cosmology)
+    logdensity = _catalog_effective_logdensity(model, z, sky_index; average=true)
+    isfinite(logdensity) || return -Inf
+    mass_logpdf = applicable(logpdf, model.mass_distribution, m1s, m2s, z) ?
+        logpdf(model.mass_distribution, m1s, m2s, z) : logpdf(model.mass_distribution, m1s, m2s)
+    return mass_logpdf + log_rate(model.redshift_rate, z) + logdensity -
+        log1p(z) - log(detector_to_source_jacobian(z, model.cosmology)) - log(prior) + _rate_scale(model)
+end
+
+function log_event_rate(model::CBCCatalogSkyMapRate, luminosity_distance, sky_index, prior)
+    prior > 0 || return -Inf
+    z = redshift_at_luminosity_distance(model.cosmology, luminosity_distance)
+    logdensity = _catalog_effective_logdensity(model, z, sky_index; average=false)
+    isfinite(logdensity) || return -Inf
+    return log_rate(model.redshift_rate, z) + logdensity -
+        log1p(z) - log(abs(ddl_dz(model.cosmology, z))) - log(prior) + _rate_scale(model)
+end
+
+function log_injection_rate(model::CBCCatalogSkyMapRate, luminosity_distance, sky_index, prior)
+    prior > 0 || return -Inf
+    z = redshift_at_luminosity_distance(model.cosmology, luminosity_distance)
+    logdensity = _catalog_empty_logdensity(model, z)
+    isfinite(logdensity) || return -Inf
+    return log_rate(model.redshift_rate, z) + logdensity -
+        log1p(z) - log(abs(ddl_dz(model.cosmology, z))) - log(prior) + _rate_scale(model)
+end
+
 function log_event_rate(model::SpinWeightedRate, args...)
     nbase = length(args) - length(model.spin_columns) - 1
     nbase >= 1 || throw(ArgumentError("SpinWeightedRate requires base event columns, spin columns, and prior"))
@@ -388,10 +491,27 @@ function log_event_rate(model::SpinWeightedRate, args...)
     return log_event_rate(model.base, base_args..., prior) + logpdf(model.spin_prior, spin_args...)
 end
 
+function log_injection_rate(model::SpinWeightedRate, args...)
+    nbase = length(args) - length(model.spin_columns) - 1
+    nbase >= 1 || throw(ArgumentError("SpinWeightedRate requires base event columns, spin columns, and prior"))
+    base_args = args[1:nbase]
+    spin_args = args[(nbase + 1):(end - 1)]
+    prior = args[end]
+    return log_injection_rate(model.base, base_args..., prior) + logpdf(model.spin_prior, spin_args...)
+end
+
 function log_event_rate(model::MixtureRate, args...)
     l1 = model.lambda_pop == 0 ? -Inf : log(model.lambda_pop) + log_event_rate(model.rate1, args...)
     l2 = model.lambda_pop == 1 ? -Inf : log1p(-model.lambda_pop) + log_event_rate(model.rate2, args...)
     return logaddexp(l1, l2)
 end
+
+function log_injection_rate(model::MixtureRate, args...)
+    l1 = model.lambda_pop == 0 ? -Inf : log(model.lambda_pop) + log_injection_rate(model.rate1, args...)
+    l2 = model.lambda_pop == 1 ? -Inf : log1p(-model.lambda_pop) + log_injection_rate(model.rate2, args...)
+    return logaddexp(l1, l2)
+end
+
+log_injection_rate(model, args...) = log_event_rate(model, args...)
 
 end

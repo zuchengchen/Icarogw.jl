@@ -103,7 +103,8 @@ Status meanings:
 | `CBC_mixte_pop_rate` | `MixtureRate` | implemented/renamed | Convex logaddexp mixture of two compatible rate models. |
 | spin variants | `SpinWeightedRate(base, spin_prior)` | implemented/merged | Composes component-spin, mass-dependent spin, pSEOB/ECO, or effective-spin priors with first-version CBC rate models; mass-dependent spin priors use explicit source-mass columns. |
 | `CBC_vanilla_rate_pseob` | `SpinWeightedRate(base, PSEOBGaussianPrior)` | partial/merged | Standard pSEOB weighting is supported; Python `_dummy` injection asymmetry is not yet a separate likelihood contract. |
-| catalog/EM counterpart rates | placeholder modules | planned | First-version exclusion. |
+| `CBC_catalog_vanilla_rate`, `CBC_catalog_vanilla_rate_skymap` | `CBCCatalogVanillaRate`, `CBCCatalogSkyMapRate` | implemented/renamed | Catalog-aware CBC rates consume `:sky_indices`, runtime catalog interpolants, and Python-compatible posterior/injection completeness behavior. |
+| EM counterpart rates | placeholder modules | planned | Counterpart-specific rate wrappers remain a separate catalog/EM integration phase. |
 | stochastic mixed rates | placeholder modules | planned | First-version exclusion. |
 
 ## posterior_samples.py and injections.py

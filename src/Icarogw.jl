@@ -5,13 +5,13 @@ include("Cosmology.jl")
 include("SkyMaps.jl")
 include("Conversions.jl")
 include("Priors.jl")
+include("Catalog.jl")
 include("Rates.jl")
 include("DataContainers.jl")
 include("Likelihood.jl")
 include("Simulation.jl")
 include("Plotting.jl")
 include("DynestyInterface.jl")
-include("Catalog.jl")
 include("Stochastic.jl")
 include("OmegaGW.jl")
 
@@ -20,13 +20,13 @@ using .Cosmology
 using .SkyMaps
 using .Conversions
 using .Priors
+using .Catalog
 using .Rates
 using .DataContainers
 using .Likelihood
 using .Simulation
 using .Plotting
 using .DynestyInterface
-using .Catalog
 using .Stochastic
 
 export COST_C,
@@ -188,11 +188,14 @@ export COST_C,
     CBCSingleMassRate,
     CBCTotalMassQRate,
     CBCRedshiftPrimaryQRate,
+    CBCCatalogVanillaRate,
+    CBCCatalogSkyMapRate,
     MixtureRate,
     SpinWeightedRate,
     SimplePowerLawPopulation,
     materialize,
     log_event_rate,
+    log_injection_rate,
     PosteriorSamples,
     PosteriorSampleSet,
     ParallelPosterior,

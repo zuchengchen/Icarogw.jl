@@ -68,6 +68,8 @@ _required_columns(::CBCMchirpQRate) = (:chirp_mass, :mass_ratio, :luminosity_dis
 _required_columns(::CBCSingleMassRate) = (:mass_1, :luminosity_distance)
 _required_columns(::CBCTotalMassQRate) = (:total_mass, :mass_ratio, :luminosity_distance)
 _required_columns(::CBCRedshiftPrimaryQRate) = (:mass_1, :mass_ratio, :luminosity_distance)
+_required_columns(::CBCCatalogVanillaRate) = (:mass_1, :mass_2, :luminosity_distance, :sky_indices)
+_required_columns(::CBCCatalogSkyMapRate) = (:luminosity_distance, :sky_indices)
 _required_columns(model::SpinWeightedRate) = (_required_columns(model.base)..., model.spin_columns...)
 function _required_columns(model::MixtureRate)
     cols1 = _required_columns(model.rate1)
@@ -99,7 +101,7 @@ function _injection_logweights(model, inj::InjectionSet)
     cols = map(name -> column(inj, name), _required_columns(model))
     out = Vector{Float64}(undef, length(inj.prior))
     @inbounds for i in eachindex(out)
-        out[i] = log_event_rate(model, (col[i] for col in cols)..., inj.prior[i])
+        out[i] = log_injection_rate(model, (col[i] for col in cols)..., inj.prior[i])
     end
     return out
 end

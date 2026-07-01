@@ -81,7 +81,7 @@ redshift likelihood-prior helper for `uniform`, `gaussian`, and
 `gaussian_nocom` modes. The first FITS/HEALPix/NUNIQ skymap core and the
 Python-compatible `IcarogwCatalog`/`GwcosmoCatalog` runtime HDF5 readers now
 exist; full catalog workflows still need preprocessing builders,
-`galaxy_catalog`, and rate/likelihood integration.
+`galaxy_catalog`, and EM counterpart rate/likelihood integration.
 
 ## Model Composition
 
@@ -94,7 +94,11 @@ keeps the sampler-facing API compact while covering the same model families.
 
 Additional CBC coordinate systems are expressed as separate rate model structs:
 `CBCMass1Rate`, `CBCMchirpQRate`, `CBCSingleMassRate`,
-`CBCTotalMassQRate`, and `CBCRedshiftPrimaryQRate`.
+`CBCTotalMassQRate`, `CBCRedshiftPrimaryQRate`,
+`CBCCatalogVanillaRate`, and `CBCCatalogSkyMapRate`. The catalog-aware rates
+consume runtime catalog interpolants and a pixelized `:sky_indices` column; PE
+weights use sky-dependent catalog values, while injection weights use the
+Python-compatible averaged or empty-catalog completeness paths.
 
 Spin variants are represented by `SpinWeightedRate(base_model, spin_prior)`,
 which composes `DefaultSpinPrior` or `GaussianSpinPrior` with the mass/redshift

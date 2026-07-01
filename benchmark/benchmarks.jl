@@ -65,10 +65,18 @@ catalog_ra = collect(range(0.0, 2pi; length=16))
 catalog_dec = collect(range(-0.8, 0.8; length=16))
 catalog_rows = get_NUNIQ_pixel(catalog_runtime, catalog_ra, catalog_dec)
 catalog_z = collect(range(0.05, 0.3; length=16))
+catalog_m1d = fill(36.0, length(catalog_z))
+catalog_m2d = fill(24.0, length(catalog_z))
+catalog_dl = luminosity_distance(catalog_cosmology, catalog_z)
+catalog_rate = CBCCatalogVanillaRate(catalog_runtime, catalog_cosmology,
+    ConditionalMassDistribution(PowerLaw(5.0, 80.0, -2.0), PowerLaw(5.0, 80.0, 1.0)),
+    PowerLawRate(0.0))
 
 println("catalog runtime")
 display(@benchmark get_NUNIQ_pixel($catalog_runtime, $catalog_ra, $catalog_dec))
 display(@benchmark effective_galaxy_number_interpolant($catalog_runtime, $catalog_z, $catalog_rows, $catalog_cosmology; average=true))
+display(@benchmark event_logweights($catalog_rate, PosteriorSamples((mass_1=$catalog_m1d, mass_2=$catalog_m2d,
+    luminosity_distance=$catalog_dl, sky_indices=$catalog_rows, prior=ones(length($catalog_z))))))
 
 ra = collect(range(0.0, 2pi; length=64))
 dec = collect(range(-1.0, 1.0; length=64))

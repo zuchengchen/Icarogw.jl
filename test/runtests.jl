@@ -764,6 +764,48 @@ end
         log(detector_to_source_jacobian(z_from_dl, c)) - log1p(z_from_dl)
     @test log_event_rate(pair_rate, m1d, m2d, dl, prior) ≈ expected_pair
 
+    level = 0
+    nside = healpix_level_to_nside(level)
+    npix = 12 * nside^2
+    uniq = [level_ipix_to_uniq(level, ipix) for ipix in 0:(npix - 1)]
+    dngal = [10.0 * iz + pix for iz in 1:3, pix in 1:npix]
+    bg_vals = fill(0.0, 3, npix)
+    mktempdir() do dir
+        catalog_path = joinpath(dir, "rate_catalog.h5")
+        h5open(catalog_path, "w") do h
+            group = create_group(h, "K")
+            write(group, "mthr_moc_map", fill(30.0, npix))
+            write(group, "uniq_moc_map", uniq)
+            write(group, "z_grid", [0.1, 0.2, 0.4])
+            subgroup = create_group(group, "weighted")
+            attrs(subgroup)["band"] = "K-glade+"
+            attrs(subgroup)["epsilon"] = 0.8
+            write(subgroup, "vals_interpolant", permutedims(dngal))
+            write(subgroup, "bg_vals_interpolant", permutedims(bg_vals))
+        end
+        catalog = IcarogwCatalog(catalog_path, "K", "weighted"; cosmology=c)
+        row = get_NUNIQ_pixel(catalog, 0.2, 0.1)
+        catalog_rate = CBCCatalogVanillaRate(catalog, c, ConditionalMassDistribution(mass, PowerLaw(5.0, 100.0, 1.0)), rate; Rgal=2.0)
+        expected_catalog = logpdf(catalog_rate.mass_distribution, m1s, m2s) + Icarogw.Rates.log_rate(rate, z_from_dl) +
+            log(dngal[2, row]) - log1p(z_from_dl) - log(detector_to_source_jacobian(z_from_dl, c)) + log(2.0)
+        @test log_event_rate(catalog_rate, m1d, m2d, dl, row, prior) ≈ expected_catalog
+        @test log_injection_rate(catalog_rate, m1d, m2d, dl, row, prior) ≈
+              logpdf(catalog_rate.mass_distribution, m1s, m2s) + Icarogw.Rates.log_rate(rate, z_from_dl) +
+              log(sum(dngal[2, :]) / npix) - log1p(z_from_dl) - log(detector_to_source_jacobian(z_from_dl, c)) + log(2.0)
+
+        catalog_ps = PosteriorSamples((mass_1=[m1d], mass_2=[m2d], luminosity_distance=[dl],
+            sky_indices=[row], prior=[1.0]))
+        catalog_inj = InjectionSet((mass_1=[m1d], mass_2=[m2d], luminosity_distance=[dl],
+            sky_indices=[row], prior=[1.0]); ntotal=10, Tobs=1)
+        @test isfinite(loglikelihood(catalog_rate, PopulationData(PosteriorSampleSet(catalog_ps), catalog_inj)))
+
+        skymap_rate = CBCCatalogSkyMapRate(catalog, c, rate; Rgal=3.0)
+        @test log_event_rate(skymap_rate, dl, row, prior) ≈
+              Icarogw.Rates.log_rate(rate, z_from_dl) + log(dngal[2, row]) - log1p(z_from_dl) -
+              log(abs(ddl_dz(c, z_from_dl))) + log(3.0)
+        @test isfinite(log_injection_rate(skymap_rate, dl, row, prior))
+    end
+
     ps = PosteriorSamples((mass_1=[m1d], mass_ratio=[q], luminosity_distance=[dl], prior=[1.0]))
     inj = InjectionSet((mass_1=[m1d], mass_ratio=[q], luminosity_distance=[dl], prior=[1.0]); ntotal=10, Tobs=1)
     data = PopulationData(PosteriorSampleSet(ps), inj)

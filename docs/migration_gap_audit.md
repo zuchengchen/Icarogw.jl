@@ -45,7 +45,7 @@ complete until the final review checklist proves full scientific coverage.
 ## Current Largest Gaps
 
 - `catalog.py`: complete pixelated catalog preparation, `galaxy_catalog`,
-  catalog-aware rates/likelihoods, and GW/EM workflow integration. The
+  EM counterpart rates, and GW/EM workflow integration. The
   `IcarogwCatalog` and `GwcosmoCatalog` runtime HDF5 readers now cover
   NUNIQ/HEALPix lookup, magnitude thresholds, sky-dependent and averaged
   effective galaxy interpolants, and empty-catalog mode; k-corrections,
@@ -57,10 +57,12 @@ complete until the final review checklist proves full scientific coverage.
   stochastic CSV/HDF5 readers, and vanilla CBC+stochastic likelihood helpers.
   Richer covariance/data-product APIs and catalog/EM mixed stochastic
   likelihoods remain open.
-- `rates.py` and `likelihood.py`: catalog-aware rates, EM counterpart rates,
-  full stochastic data-product support, and catalog/EM stochastic joint
-  likelihoods. Standard pSEOB weighting composes through `SpinWeightedRate`,
-  while Python's pSEOB dummy injection asymmetry remains a specialized gap.
+- `rates.py` and `likelihood.py`: EM counterpart rates, full stochastic
+  data-product support, and catalog/EM stochastic joint likelihoods.
+  Catalog-aware CBC rates now consume runtime catalog interpolants and
+  pixelized `:sky_indices`. Standard pSEOB weighting composes through
+  `SpinWeightedRate`, while Python's pSEOB dummy injection asymmetry remains a
+  specialized gap.
 - `posterior_samples.py` and `injections.py`: higher-level catalog-aware
   workflows. Dependency-light posterior parallel workspaces, counterpart
   redshift-column attachment, HEALPix/catalog pixelization, non-catalog cuts,
