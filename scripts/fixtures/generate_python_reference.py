@@ -93,7 +93,7 @@ def _install_lightweight_reference_package() -> None:
 def _write_rows(path: pathlib.Path, fieldnames: Iterable[str], rows: Iterable[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(fieldnames))
+        writer = csv.DictWriter(handle, fieldnames=list(fieldnames), lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
@@ -299,6 +299,12 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
     notch = priors._notch_filter(xs, 5.0, 2.0, 8.0, 2.0, 0.4)
     mixed_linear = priors._mixed_linear_function(xs / 10.0, 0.2, 0.8)
     mixed_sigmoid = priors._mixed_double_sigmoid_function(xs / 10.0, 0.55, 0.15, 0.2, 0.8)
+    lowpass_evolving = priors.LowpassSmoothedProbEvolving(priors.PowerLaw(5.0, 12.0, -2.0), 2.0)
+    lowpass_evolving_logpdf = lowpass_evolving.log_pdf(xs)
+    M_abs = np.array([-22.0, -19.5, -17.0])
+    abs_l_powerlaw = priors.absL_PL_inM(-23.0, -16.0, -1.1)
+    abs_l_powerlaw_logpdf = abs_l_powerlaw.log_pdf(M_abs)
+    abs_l_powerlaw_cdf = abs_l_powerlaw.cdf(M_abs)
     log_bivar = bivar.log_pdf(x1, x2)
     for i in range(len(xs)):
         rows.append(
@@ -310,6 +316,10 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
                 "notch": notch[i],
                 "mixed_linear": mixed_linear[i],
                 "mixed_sigmoid": mixed_sigmoid[i],
+                "lowpass_evolving_logpdf": lowpass_evolving_logpdf[i],
+                "M_abs": M_abs[i],
+                "abs_l_powerlaw_logpdf": abs_l_powerlaw_logpdf[i],
+                "abs_l_powerlaw_cdf": abs_l_powerlaw_cdf[i],
                 "x1": x1[i],
                 "x2": x2[i],
                 "bivariate_logpdf": log_bivar[i],
@@ -331,6 +341,10 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
             "notch",
             "mixed_linear",
             "mixed_sigmoid",
+            "lowpass_evolving_logpdf",
+            "M_abs",
+            "abs_l_powerlaw_logpdf",
+            "abs_l_powerlaw_cdf",
             "x1",
             "x2",
             "bivariate_logpdf",

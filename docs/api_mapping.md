@@ -75,8 +75,9 @@ Status meanings:
 | `paired_2dimpdf` | `PairedMassDistribution` | implemented/renamed | Pairing by mass ratio power. |
 | `piecewise_constant_2d_distribution_normalized` | `PiecewiseConstant2D` | implemented/renamed | Triangular checkerboard. |
 | `_lowpass_filter`, `_highpass_filter`, `_notch_filter`, `_mixed_linear_function`, `_mixed_double_sigmoid_function` | `lowpass_filter`, `highpass_filter`, `notch_filter`, `mixed_linear_function`, `mixed_double_sigmoid_function` | implemented/renamed | Helper-level formulas covered by fixture. |
-| low-pass / dip smoothers | `LowpassSmoothedProb`, `SmoothedPlusDipProb` | implemented | Native numerical normalization. |
+| low-pass / dip smoothers | `LowpassSmoothedProb`, `LowpassSmoothedProbEvolving`, `SmoothedPlusDipProb` | implemented | Evolving smoother follows Python's fixed-grid normalization; non-evolving smoother keeps native numerical normalization. |
 | `Bivariate2DGaussian` | `Bivariate2DGaussian` | implemented | Truncated marginal plus conditional Gaussian. |
+| `absL_PL_inM` | `AbsLuminosityPowerLawInMagnitude`, `absL_PL_inM` | implemented/renamed | Luminosity power law represented in absolute-magnitude space. |
 | `PowerLawStationary`, `PowerLawLinear`, `GaussianStationary`, `GaussianLinear` | same names | implemented | Redshift-stationary and redshift-linear mass components. |
 | `PowerLaw_PowerLaw`, `PowerLaw_PowerLaw_PowerLaw`, `PowerLaw_PowerLaw_Gaussian`, redshift-linear mixture wrappers | `MixtureMassPrior` with stationary/linear components | implemented/merged | Julia-native composable mixture abstraction. |
 | spin prior wrappers | `DefaultSpinPrior`, `GaussianSpinPrior` | implemented/merged | Core population spin priors. |

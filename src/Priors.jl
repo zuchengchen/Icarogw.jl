@@ -24,7 +24,10 @@ export AbstractPrior,
     PiecewiseConstant2D,
     Bivariate2DGaussian,
     LowpassSmoothedProb,
+    LowpassSmoothedProbEvolving,
     SmoothedPlusDipProb,
+    AbsLuminosityPowerLawInMagnitude,
+    absL_PL_inM,
     lowpass_filter,
     highpass_filter,
     notch_filter,
@@ -61,6 +64,9 @@ cdf(p::AbstractPrior, x::AbstractArray) = map(v -> cdf(p, v), x)
 logpdf(p::AbstractPrior, x::AbstractArray, z::AbstractArray) = map((a, b) -> logpdf(p, a, b), x, z)
 pdf(p::AbstractPrior, x, z) = exp.(logpdf(p, x, z))
 
+_powerlaw_norm(min, max, alpha) =
+    alpha == -1 ? log(max / min) : (max^(alpha + 1) - min^(alpha + 1)) / (alpha + 1)
+
 """
     PowerLaw(min, max, alpha)
 
@@ -77,7 +83,7 @@ struct PowerLaw <: AbstractPrior
         min < max || throw(ArgumentError("PowerLaw requires min < max"))
         min >= 0 || throw(ArgumentError("PowerLaw minimum must be non-negative"))
         a = Float64(alpha)
-        norm = a == -1 ? log(max / min) : (max^(a + 1) - min^(a + 1)) / (a + 1)
+        norm = _powerlaw_norm(float(min), float(max), a)
         norm > 0 || throw(ArgumentError("invalid PowerLaw normalization"))
         return new(float(min), float(max), a, norm)
     end
@@ -596,6 +602,106 @@ function logpdf(p::LowpassSmoothedProb, x::Real)
 end
 cdf(p::LowpassSmoothedProb, x::Real) =
     x <= p.min ? 0.0 : x >= p.max ? 1.0 : quadgk(t -> pdf(p, t), p.min, x; rtol=1e-5)[1]
+
+"""
+    LowpassSmoothedProbEvolving(origin, delta_m)
+
+Python-compatible low-mass smoothing wrapper for priors that may depend on
+redshift. Its normalization follows Python `LowpassSmoothedProbEvolving`,
+including the fixed 1000-point trapezoidal rule used in that implementation.
+"""
+struct LowpassSmoothedProbEvolving{P<:AbstractPrior} <: AbstractPrior
+    origin::P
+    delta::Float64
+    min::Float64
+    max::Float64
+end
+function LowpassSmoothedProbEvolving(origin::AbstractPrior, delta::Real)
+    return LowpassSmoothedProbEvolving(origin, float(delta), getfield(origin, :min), getfield(origin, :max))
+end
+function _redshift_support_bounds(origin, z)
+    if hasfield(typeof(origin), :mmin_z0) && hasfield(typeof(origin), :mmin_z1) &&
+       hasfield(typeof(origin), :mmax_z0) && hasfield(typeof(origin), :mmax_z1)
+        return getfield(origin, :mmin_z0) + getfield(origin, :mmin_z1) * z,
+            getfield(origin, :mmax_z0) + getfield(origin, :mmax_z1) * z
+    end
+    return getfield(origin, :min), getfield(origin, :max)
+end
+function _trapezoid_integral(values::AbstractVector{<:Real}, xs::AbstractVector{<:Real})
+    total = 0.0
+    for i in 1:(length(xs) - 1)
+        total += 0.5 * (values[i] + values[i + 1]) * (xs[i + 1] - xs[i])
+    end
+    return total
+end
+function _lowpass_evolving_norm(p::LowpassSmoothedProbEvolving, z=nothing)
+    p.delta <= 0 && return 1.0
+    lo, _ = z === nothing ? (p.min, p.max) : _redshift_support_bounds(p.origin, z)
+    isfinite(lo) || throw(ArgumentError("LowpassSmoothedProbEvolving needs finite lower support"))
+    xs = range(lo, lo + p.delta; length=1000)
+    base = z === nothing ? [pdf(p.origin, x) for x in xs] : [exp(_component_logpdf(p.origin, x, z)) for x in xs]
+    xvec = collect(xs)
+    smoothed = base .* highpass_filter(xvec, lo, p.delta)
+    integral_before = _trapezoid_integral(base, xvec)
+    integral_now = _trapezoid_integral(smoothed, xvec)
+    return 1 - integral_before + integral_now
+end
+function logpdf(p::LowpassSmoothedProbEvolving, x::Real)
+    _inrange(x, p.min, p.max) || return -Inf
+    w = highpass_filter(x, p.min, p.delta)
+    w > 0 || return -Inf
+    return logpdf(p.origin, x) + log(w) - log(_lowpass_evolving_norm(p))
+end
+function logpdf(p::LowpassSmoothedProbEvolving, x::Real, z::Real)
+    lo, hi = _redshift_support_bounds(p.origin, z)
+    _inrange(x, lo, hi) || return -Inf
+    w = highpass_filter(x, lo, p.delta)
+    w > 0 || return -Inf
+    return _component_logpdf(p.origin, x, z) + log(w) - log(_lowpass_evolving_norm(p, z))
+end
+cdf(p::LowpassSmoothedProbEvolving, x::Real) =
+    x <= p.min ? 0.0 : x >= p.max ? 1.0 : quadgk(t -> pdf(p, t), p.min, x; rtol=1e-5)[1]
+
+"""
+    AbsLuminosityPowerLawInMagnitude(Mmin, Mmax, alpha)
+
+Absolute-magnitude prior equivalent to Python `absL_PL_inM`. It represents a
+power law in luminosity, `p(L) ∝ L^alpha`, on the luminosity range implied by
+`[Mmin, Mmax]`, and includes the magnitude-space Jacobian.
+"""
+struct AbsLuminosityPowerLawInMagnitude <: AbstractPrior
+    min::Float64
+    max::Float64
+    alpha::Float64
+    Lmin::Float64
+    Lmax::Float64
+    luminosity_prior::PowerLaw
+    luminosity_cdf_prior::PowerLaw
+    extrafact::Float64
+end
+function AbsLuminosityPowerLawInMagnitude(Mmin::Real, Mmax::Real, alpha::Real)
+    Mmin < Mmax || throw(ArgumentError("AbsLuminosityPowerLawInMagnitude requires Mmin < Mmax"))
+    a = float(alpha)
+    Lmax = 3.0128e28 * 10.0^(-0.4 * float(Mmin))
+    Lmin = 3.0128e28 * 10.0^(-0.4 * float(Mmax))
+    Lmin < Lmax || throw(ArgumentError("invalid luminosity range"))
+    lum_prior = PowerLaw(Lmin, Lmax, a + 1)
+    lum_cdf_prior = PowerLaw(Lmin, Lmax, a)
+    extrafact = 0.4 * log(10) * _powerlaw_norm(Lmin, Lmax, a + 1) / _powerlaw_norm(Lmin, Lmax, a)
+    return AbsLuminosityPowerLawInMagnitude(float(Mmin), float(Mmax), a, Lmin, Lmax, lum_prior, lum_cdf_prior, extrafact)
+end
+function logpdf(p::AbsLuminosityPowerLawInMagnitude, M::Real)
+    _inrange(M, p.min, p.max) || return -Inf
+    L = 3.0128e28 * 10.0^(-0.4 * M)
+    return logpdf(p.luminosity_prior, L) + log(p.extrafact)
+end
+function cdf(p::AbsLuminosityPowerLawInMagnitude, M::Real)
+    M <= p.min && return 0.0
+    M >= p.max && return 1.0
+    L = 3.0128e28 * 10.0^(-0.4 * M)
+    return 1 - cdf(p.luminosity_cdf_prior, L)
+end
+const absL_PL_inM = AbsLuminosityPowerLawInMagnitude
 
 """
     SmoothedPlusDipProb(origin, bottomsmooth, topsmooth, leftdip, rightdip, leftdipsmooth, rightdipsmooth, deep)

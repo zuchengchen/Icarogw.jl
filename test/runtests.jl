@@ -127,6 +127,12 @@ end
     @test mixed_linear_function(priors_rates_ref.x ./ 10.0, 0.2, 0.8) ≈ priors_rates_ref.mixed_linear rtol=1e-14
     @test mixed_double_sigmoid_function(priors_rates_ref.x ./ 10.0, 0.55, 0.15, 0.2, 0.8) ≈
           priors_rates_ref.mixed_sigmoid rtol=1e-14
+    lowpass_evolving = LowpassSmoothedProbEvolving(PowerLaw(5.0, 12.0, -2.0), 2.0)
+    @test logpdf(lowpass_evolving, priors_rates_ref.x) ≈ priors_rates_ref.lowpass_evolving_logpdf rtol=2e-12
+    @test 0 <= cdf(lowpass_evolving, 7.0) <= 1
+    abs_lum = AbsLuminosityPowerLawInMagnitude(-23.0, -16.0, -1.1)
+    @test logpdf(abs_lum, priors_rates_ref.M_abs) ≈ priors_rates_ref.abs_l_powerlaw_logpdf rtol=2e-14
+    @test cdf(abs_lum, priors_rates_ref.M_abs) ≈ priors_rates_ref.abs_l_powerlaw_cdf rtol=2e-14
     bivar = Bivariate2DGaussian(
         x1min=-1.0,
         x1max=1.0,
@@ -151,12 +157,14 @@ end
     mix = PowerLawGaussian(5, 80, -2, 0.1, 35, 4, 5, 55)
     @test isfinite(logpdf(g, 30.0))
     @test isfinite(logpdf(mix, 35.0))
+    @test absL_PL_inM === AbsLuminosityPowerLawInMagnitude
 
     cm = ConditionalMassDistribution(PowerLaw(5, 80, -2), PowerLaw(5, 80, 1))
     @test isfinite(logpdf(cm, 30.0, 20.0))
     @test logpdf(cm, 20.0, 30.0) == -Inf
     plz = PowerLawLinear(2.0, 0.2, 5.0, 0.5, 80.0, 1.0)
     @test isfinite(logpdf(plz, 30.0, 0.4))
+    @test isfinite(logpdf(LowpassSmoothedProbEvolving(plz, 2.0), 30.0, 0.4))
     gz = GaussianLinear(30.0, 2.0, 5.0, 0.1, 5.0)
     @test isfinite(logpdf(gz, 31.0, 0.5))
     mixz = MixtureMassPrior((PowerLawStationary(2.0, 5.0, 80.0), gz), [0.7, 0.3])
