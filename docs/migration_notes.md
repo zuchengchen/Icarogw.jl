@@ -81,8 +81,7 @@ redshift likelihood-prior helper for `uniform`, `gaussian`, and
 `gaussian_nocom` modes. The first FITS/HEALPix/NUNIQ skymap core and the
 Python-compatible `IcarogwCatalog`/`GwcosmoCatalog` runtime HDF5 readers now
 exist; full catalog workflows still need preprocessing builders,
-`galaxy_catalog`, posterior/injection pixelization, and rate/likelihood
-integration.
+`galaxy_catalog`, and rate/likelihood integration.
 
 ## Model Composition
 
@@ -106,8 +105,8 @@ rate model instead of duplicating every Python spin wrapper class.
 Dependency-light posterior workflows are pure Julia functions. `build_parallel_posterior`
 creates the matrix workspace used by Python `posterior_samples_catalog`, while
 `add_counterpart` attaches EM redshift samples as a `z_EM` column. Sky-direction
-filtering and posterior/injection catalog pixelization still need to be wired
-to the skymap and runtime catalog layers.
+filtering can compose with the `:sky_indices` column produced by
+`pixelize`/`pixelize_with_catalog` for posterior samples and injections.
 
 ## Skymap Core
 
@@ -117,8 +116,10 @@ coordinate helpers, with Julia 1-based indexing by default and an explicit
 `zero_based=true` compatibility mode. `LigoSkyMap` reads multi-order FITS
 tables with `UNIQ`, `PROBDENSITY`, `DISTMU`, and `DISTSIGMA`, implements the
 minimal NUNIQ/MOC lookup needed by Python catalog workflows, and evaluates the
-Python-compatible 3D posterior/likelihood. Full catalog and EM rate workflows
-remain a separate phase that will consume these primitives.
+Python-compatible 3D posterior/likelihood. Posterior and injection containers
+can now be pixelized against either HEALPix or catalog NUNIQ/MOC rows. Full
+catalog and EM rate workflows remain a separate phase that will consume these
+primitives.
 
 ## Stochastic Data
 

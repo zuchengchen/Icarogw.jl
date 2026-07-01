@@ -61,16 +61,16 @@ complete until the final review checklist proves full scientific coverage.
   full stochastic data-product support, and catalog/EM stochastic joint
   likelihoods. Standard pSEOB weighting composes through `SpinWeightedRate`,
   while Python's pSEOB dummy injection asymmetry remains a specialized gap.
-- `posterior_samples.py` and `injections.py`: catalog/skymap pixelization and
-  catalog-aware workflows. Dependency-light posterior parallel workspaces,
-  counterpart redshift-column attachment, non-catalog cuts,
+- `posterior_samples.py` and `injections.py`: higher-level catalog-aware
+  workflows. Dependency-light posterior parallel workspaces, counterpart
+  redshift-column attachment, HEALPix/catalog pixelization, non-catalog cuts,
   effective-sample-size, expected-detection, and reweighting helpers are
   implemented as pure Julia functions.
 - `conversions.py`: HEALPix coordinate helpers and the first `LigoSkyMap`
   multi-order FITS/NUNIQ workspace are implemented, and the runtime catalog
-  readers consume those skymap primitives. Posterior/injection pixelization and
-  higher-level catalog/EM workflows still need integration. Joint effective-spin
-  KDE helpers are covered by RNG-explicit Julia implementations.
+  readers plus posterior/injection pixelization consume those skymap
+  primitives. Higher-level catalog/EM workflows still need integration. Joint
+  effective-spin KDE helpers are covered by RNG-explicit Julia implementations.
 - `priors.py` and `wrappers.py`: standalone advanced priors, extended spin
   families, and dependency-free dip/Farah/bin/multi-peak paired mass wrapper
   compositions are implemented with fixture coverage. Redshift-linear mixture

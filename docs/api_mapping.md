@@ -118,8 +118,8 @@ Status meanings:
 | `effective_injections_number`, PE effective number | `effective_sample_size` | implemented/renamed | Works from log weights or model+container. |
 | `expected_number_detections` | `expected_number_detections` | implemented | Uses injection pseudo-rate convention. |
 | `update_cut`, `reweight_PE`, `return_reweighted_injections` | `subset_injections`, `subset_posterior_samples`, `reweight_posterior_samples`, `reweight_injections` | implemented/renamed | RNG-explicit pure helpers. |
-| `posterior_samples.add_counterpart` | `add_counterpart` | implemented/renamed | Dependency-light `z_EM` column attachment; sky-direction filtering will consume the new skymap/catalog primitives in a later phase. |
-| pixelization/catalog methods | catalog/skymap future module | planned | HEALPix/NUNIQ primitives exist; posterior/injection container integration remains pending. |
+| `posterior_samples.add_counterpart` | `add_counterpart` | implemented/renamed | Dependency-light `z_EM` column attachment; sky-direction filtering can compose with the pixelized `:sky_indices` column. |
+| `pixelize`, `pixelize_with_catalog` | `pixelize`, `pixelize_with_catalog` | implemented/renamed | Pure helpers return new posterior/injection containers with `:sky_indices` from HEALPix or catalog NUNIQ/MOC lookup. |
 
 ## likelihood.py
 

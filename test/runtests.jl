@@ -561,6 +561,31 @@ end
     @test :z_EM in counterpart.names
     @test collect(column(counterpart, :z_EM)) == [0.11, 0.12, 0.13]
     @test first(tiny.posteriors.events).names == [:mass_1, :mass_2, :luminosity_distance]
+    ra = [0.1, 1.1, 2.2]
+    dec = [0.2, -0.3, 0.4]
+    sky_ps = PosteriorSamples((right_ascension=ra, declination=dec, prior=ones(3)); event_name=:sky)
+    pixelized_ps = pixelize(sky_ps, 2; nest=true)
+    @test :sky_indices in pixelized_ps.names
+    @test collect(column(pixelized_ps, :sky_indices)) == radec2indeces(ra, dec, 2; nest=true)
+    @test collect(column(pixelize(sky_ps, 2; nest=true, zero_based=true), :sky_indices)) ==
+          radec2indeces(ra, dec, 2; nest=true, zero_based=true)
+    @test :sky_indices ∉ sky_ps.names
+    pixelized_set = pixelize(PosteriorSampleSet(sky_ps, sky_ps), 2; nest=true)
+    @test all(:sky_indices in event.names for event in pixelized_set.events)
+    level = healpix_nside_to_level(2)
+    uniq = [level_ipix_to_uniq(level, ipix) for ipix in 0:(12 * 2^2 - 1)]
+    moc = MOCMap(collect(1:length(uniq)), uniq)
+    catalog_pixelized_ps = pixelize_with_catalog(sky_ps, moc)
+    @test collect(column(catalog_pixelized_ps, :sky_indices)) == get_NUNIQ_pixel(moc, ra, dec)
+    catalog_pixelized_set = pixelize_with_catalog(PosteriorSampleSet(sky_ps, sky_ps), moc)
+    @test all(column(event, :sky_indices) == column(catalog_pixelized_ps, :sky_indices) for event in catalog_pixelized_set.events)
+    sky_inj = InjectionSet((right_ascension=ra, declination=dec, prior=ones(3)); ntotal=5, Tobs=1.5)
+    pixelized_inj = pixelize(sky_inj, 2; nest=true)
+    @test pixelized_inj.ntotal == sky_inj.ntotal
+    @test pixelized_inj.Tobs == sky_inj.Tobs
+    @test collect(column(pixelized_inj, :sky_indices)) == radec2indeces(ra, dec, 2; nest=true)
+    @test collect(column(pixelize_with_catalog(sky_inj, moc), :sky_indices)) == get_NUNIQ_pixel(moc, ra, dec)
+    @test_throws ArgumentError pixelize(ps_subset, 2)
     parallel = build_parallel_posterior(MersenneTwister(11), PosteriorSampleSet(ps_subset, first(tiny.posteriors.events)), 3)
     @test parallel isa ParallelPosterior
     @test parallel.event_names == [ps_subset.event_name, first(tiny.posteriors.events).event_name]

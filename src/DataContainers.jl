@@ -5,6 +5,7 @@ using DataFrames
 using HDF5
 using Random
 using Tables
+using ..SkyMaps: get_NUNIQ_pixel, radec2indeces
 using ..Utils: assert_same_length
 
 export PosteriorSamples,
@@ -16,6 +17,8 @@ export PosteriorSamples,
     validate,
     subset_posterior_samples,
     add_counterpart,
+    pixelize,
+    pixelize_with_catalog,
     build_parallel_posterior,
     subset_injections,
     read_posterior_csv,
@@ -181,6 +184,65 @@ sky-pixel filtering remains in the catalog/skymap workflow.
 function add_counterpart(ps::PosteriorSamples, z_EM)
     names, values = _append_column(ps.names, ps.values, :z_EM, z_EM)
     return PosteriorSamples(ps.event_name, names, values, copy(ps.prior)) |> validate
+end
+
+function _sky_columns(container; ra::Symbol=:right_ascension, dec::Symbol=:declination)
+    return column(container, ra), column(container, dec)
+end
+
+"""
+    pixelize(samples, nside; nest=false, zero_based=false)
+
+Return a posterior or injection container with `:sky_indices` computed from
+`:right_ascension` and `:declination` in radians. Julia returns 1-based
+HEALPix indices by default; set `zero_based=true` for Python `healpy`
+compatibility.
+"""
+function pixelize(ps::PosteriorSamples, nside::Integer; nest::Bool=false, zero_based::Bool=false,
+    ra::Symbol=:right_ascension, dec::Symbol=:declination, name::Symbol=:sky_indices)
+    rav, decv = _sky_columns(ps; ra, dec)
+    indices = radec2indeces(rav, decv, nside; nest, zero_based)
+    names, values = _append_column(ps.names, ps.values, name, indices)
+    return PosteriorSamples(ps.event_name, names, values, copy(ps.prior)) |> validate
+end
+
+function pixelize(set::PosteriorSampleSet, nside::Integer; kwargs...)
+    return PosteriorSampleSet([pixelize(event, nside; kwargs...) for event in set.events])
+end
+
+function pixelize(inj::InjectionSet, nside::Integer; nest::Bool=false, zero_based::Bool=false,
+    ra::Symbol=:right_ascension, dec::Symbol=:declination, name::Symbol=:sky_indices)
+    rav, decv = _sky_columns(inj; ra, dec)
+    indices = radec2indeces(rav, decv, nside; nest, zero_based)
+    names, values = _append_column(inj.names, inj.values, name, indices)
+    return InjectionSet(names, values, copy(inj.prior), inj.ntotal, inj.Tobs) |> validate
+end
+
+"""
+    pixelize_with_catalog(samples, catalog)
+
+Return a posterior or injection container with `:sky_indices` computed by the
+catalog's NUNIQ/MOC lookup. This mirrors Python `pixelize_with_catalog` while
+preserving Julia's immutable container style.
+"""
+function pixelize_with_catalog(ps::PosteriorSamples, catalog; ra::Symbol=:right_ascension,
+    dec::Symbol=:declination, name::Symbol=:sky_indices)
+    rav, decv = _sky_columns(ps; ra, dec)
+    indices = get_NUNIQ_pixel(catalog, rav, decv)
+    names, values = _append_column(ps.names, ps.values, name, indices)
+    return PosteriorSamples(ps.event_name, names, values, copy(ps.prior)) |> validate
+end
+
+function pixelize_with_catalog(set::PosteriorSampleSet, catalog; kwargs...)
+    return PosteriorSampleSet([pixelize_with_catalog(event, catalog; kwargs...) for event in set.events])
+end
+
+function pixelize_with_catalog(inj::InjectionSet, catalog; ra::Symbol=:right_ascension,
+    dec::Symbol=:declination, name::Symbol=:sky_indices)
+    rav, decv = _sky_columns(inj; ra, dec)
+    indices = get_NUNIQ_pixel(catalog, rav, decv)
+    names, values = _append_column(inj.names, inj.values, name, indices)
+    return InjectionSet(names, values, copy(inj.prior), inj.ntotal, inj.Tobs) |> validate
 end
 
 function _common_names(events::Vector{PosteriorSamples})
