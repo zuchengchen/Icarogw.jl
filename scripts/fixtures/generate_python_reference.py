@@ -72,6 +72,12 @@ def _install_lightweight_reference_package() -> None:
     sys.modules.setdefault("icarogw.cosmology", cosmology_stub)
     package.cosmology = sys.modules["icarogw.cosmology"]
 
+    conversions_stub = types.ModuleType("icarogw.conversions")
+    conversions_stub.L2M = lambda luminosity: -2.5 * math.log10(luminosity) + 71.197425
+    conversions_stub.M2L = lambda magnitude: 3.0128e28 * 10.0 ** (-0.4 * magnitude)
+    sys.modules.setdefault("icarogw.conversions", conversions_stub)
+    package.conversions = sys.modules["icarogw.conversions"]
+
     wrappers_stub = types.ModuleType("icarogw.wrappers")
     wrappers_stub.__all__ = []
     wrappers_stub.massprior_PowerLawPeak = object
@@ -259,6 +265,85 @@ def generate_simulation_utils_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
     return [path]
 
 
+def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
+    """Generate deterministic priors/rates parity fixtures."""
+
+    _install_lightweight_reference_package()
+    import scipy.special  # noqa: F401 - ensures priors.py can access scipy.special
+
+    priors = _load_reference_module("icarogw.reference_priors", "icarogw/priors.py")
+    np = priors.np
+
+    xs = np.array([4.0, 5.5, 7.0])
+    bivar = priors.Bivariate2DGaussian(
+        x1min=-1.0,
+        x1max=1.0,
+        x1mean=0.0,
+        x2min=-2.0,
+        x2max=2.0,
+        x2mean=0.1,
+        x1variance=0.5,
+        x12covariance=0.1,
+        x2variance=1.0,
+    )
+    x1 = np.array([-0.5, 0.1, 1.5])
+    x2 = np.array([0.0, 0.2, 0.4])
+    log_rate_1 = np.array([-10.0, -11.0, -12.5])
+    log_rate_2 = np.array([-9.5, -12.0, -12.0])
+    lambda_pop = 0.35
+    mixed_rate = np.logaddexp(np.log(lambda_pop) + log_rate_1, np.log1p(-lambda_pop) + log_rate_2)
+
+    rows = []
+    high = priors._highpass_filter(xs, 5.0, 2.0)
+    low = priors._lowpass_filter(xs, 8.0, 2.0)
+    notch = priors._notch_filter(xs, 5.0, 2.0, 8.0, 2.0, 0.4)
+    mixed_linear = priors._mixed_linear_function(xs / 10.0, 0.2, 0.8)
+    mixed_sigmoid = priors._mixed_double_sigmoid_function(xs / 10.0, 0.55, 0.15, 0.2, 0.8)
+    log_bivar = bivar.log_pdf(x1, x2)
+    for i in range(len(xs)):
+        rows.append(
+            {
+                "i": i + 1,
+                "x": xs[i],
+                "highpass": high[i],
+                "lowpass": low[i],
+                "notch": notch[i],
+                "mixed_linear": mixed_linear[i],
+                "mixed_sigmoid": mixed_sigmoid[i],
+                "x1": x1[i],
+                "x2": x2[i],
+                "bivariate_logpdf": log_bivar[i],
+                "log_rate_1": log_rate_1[i],
+                "log_rate_2": log_rate_2[i],
+                "lambda_pop": lambda_pop,
+                "mixed_log_rate": mixed_rate[i],
+            }
+        )
+
+    path = outdir / "generated_reference_priors_rates.csv"
+    _write_rows(
+        path,
+        (
+            "i",
+            "x",
+            "highpass",
+            "lowpass",
+            "notch",
+            "mixed_linear",
+            "mixed_sigmoid",
+            "x1",
+            "x2",
+            "bivariate_logpdf",
+            "log_rate_1",
+            "log_rate_2",
+            "lambda_pop",
+            "mixed_log_rate",
+        ),
+        rows,
+    )
+    return [path]
+
+
 def not_yet_available(name: str) -> None:
     raise SystemExit(
         f"Fixture suite '{name}' is not implemented yet. Add it when the corresponding "
@@ -270,7 +355,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--suite",
-        choices=("core", "stochastic-smoke", "simulation-utils-smoke", "catalog-smoke", "all-small"),
+        choices=("core", "stochastic-smoke", "simulation-utils-smoke", "priors-rates-smoke", "catalog-smoke", "all-small"),
         default="core",
         help="Fixture suite to generate.",
     )
@@ -287,6 +372,8 @@ def main() -> int:
         generated.extend(generate_stochastic_smoke(args.outdir))
     if args.suite in ("simulation-utils-smoke", "all-small"):
         generated.extend(generate_simulation_utils_smoke(args.outdir))
+    if args.suite in ("priors-rates-smoke", "all-small"):
+        generated.extend(generate_priors_rates_smoke(args.outdir))
     if args.suite == "catalog-smoke":
         not_yet_available(args.suite)
 

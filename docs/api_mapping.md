@@ -74,7 +74,9 @@ Status meanings:
 | `conditional_2dimz_pdf` | `RedshiftConditionalMassDistribution` | implemented/renamed | Redshift-dependent primary `p(m1|z)` with conditional secondary. |
 | `paired_2dimpdf` | `PairedMassDistribution` | implemented/renamed | Pairing by mass ratio power. |
 | `piecewise_constant_2d_distribution_normalized` | `PiecewiseConstant2D` | implemented/renamed | Triangular checkerboard. |
+| `_lowpass_filter`, `_highpass_filter`, `_notch_filter`, `_mixed_linear_function`, `_mixed_double_sigmoid_function` | `lowpass_filter`, `highpass_filter`, `notch_filter`, `mixed_linear_function`, `mixed_double_sigmoid_function` | implemented/renamed | Helper-level formulas covered by fixture. |
 | low-pass / dip smoothers | `LowpassSmoothedProb`, `SmoothedPlusDipProb` | implemented | Native numerical normalization. |
+| `Bivariate2DGaussian` | `Bivariate2DGaussian` | implemented | Truncated marginal plus conditional Gaussian. |
 | `PowerLawStationary`, `PowerLawLinear`, `GaussianStationary`, `GaussianLinear` | same names | implemented | Redshift-stationary and redshift-linear mass components. |
 | `PowerLaw_PowerLaw`, `PowerLaw_PowerLaw_PowerLaw`, `PowerLaw_PowerLaw_Gaussian`, redshift-linear mixture wrappers | `MixtureMassPrior` with stationary/linear components | implemented/merged | Julia-native composable mixture abstraction. |
 | spin prior wrappers | `DefaultSpinPrior`, `GaussianSpinPrior` | implemented/merged | Core population spin priors. |
@@ -91,6 +93,7 @@ Status meanings:
 | `CBC_rate_total_mass_q` | `CBCTotalMassQRate` | implemented/renamed | Detector `(Mtot, q, dL)`. |
 | `CBC_rate_m1_given_redshift_q` | `CBCRedshiftPrimaryQRate` | implemented/renamed | Detector `(m1, q, dL)` with `p(m1|z)`. |
 | `CBC_rate_m1_given_redshift_m2` | `CBCVanillaRate` with `RedshiftConditionalMassDistribution` | implemented/merged | Detector `(m1, m2, dL)` with `p(m1|z)p(m2|m1)`. |
+| `CBC_mixte_pop_rate` | `MixtureRate` | implemented/renamed | Convex logaddexp mixture of two compatible rate models. |
 | spin variants | `SpinWeightedRate(base, spin_prior)` | implemented/merged | Composes component-spin or effective-spin priors with any first-version CBC rate model. |
 | catalog/EM counterpart rates | placeholder modules | planned | First-version exclusion. |
 | stochastic mixed rates | placeholder modules | planned | First-version exclusion. |

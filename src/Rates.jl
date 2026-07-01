@@ -3,6 +3,7 @@ module Rates
 using ..Cosmology
 using ..Conversions
 using ..Priors
+using ..Utils: logaddexp
 using SpecialFunctions: beta, gamma
 
 import ..Priors: ParameterSchema, ParameterSpec, parameter_schema, pack, unpack, logpdf
@@ -19,6 +20,7 @@ export AbstractRedshiftRate,
     CBCSingleMassRate,
     CBCTotalMassQRate,
     CBCRedshiftPrimaryQRate,
+    MixtureRate,
     SpinWeightedRate,
     SimplePowerLawPopulation,
     materialize,
@@ -280,6 +282,27 @@ materialize(model::SimplePowerLawPopulation, theta=nothing; kwargs...) = theta =
 
 _rate_scale(model) = model.scale_free ? 0.0 : log(model.R0)
 _rate_scale(model::SpinWeightedRate) = _rate_scale(model.base)
+_rate_model_scale_free(model) = hasproperty(model, :scale_free) ? getproperty(model, :scale_free) : false
+_rate_model_scale_free(model::SpinWeightedRate) = _rate_model_scale_free(model.base)
+
+"""
+    MixtureRate(rate1, rate2, lambda_pop)
+
+Convex mixture of two CBC rate models, matching Python `CBC_mixte_pop_rate`:
+`log(lambda_pop * rate1 + (1 - lambda_pop) * rate2)`. Component rate models
+must accept the same event-coordinate arguments.
+"""
+struct MixtureRate{R1<:AbstractCBCRateModel,R2<:AbstractCBCRateModel} <: AbstractCBCRateModel
+    rate1::R1
+    rate2::R2
+    lambda_pop::Float64
+    scale_free::Bool
+    function MixtureRate(rate1::AbstractCBCRateModel, rate2::AbstractCBCRateModel, lambda_pop::Real)
+        0 <= lambda_pop <= 1 || throw(ArgumentError("lambda_pop must lie in [0, 1]"))
+        scale_free = _rate_model_scale_free(rate1) && _rate_model_scale_free(rate2)
+        return new{typeof(rate1),typeof(rate2)}(rate1, rate2, float(lambda_pop), scale_free)
+    end
+end
 
 """
     log_event_rate(model, event, prior)
@@ -357,6 +380,12 @@ function log_event_rate(model::SpinWeightedRate, args...)
     spin_args = args[(nbase + 1):(end - 1)]
     prior = args[end]
     return log_event_rate(model.base, base_args..., prior) + logpdf(model.spin_prior, spin_args...)
+end
+
+function log_event_rate(model::MixtureRate, args...)
+    l1 = model.lambda_pop == 0 ? -Inf : log(model.lambda_pop) + log_event_rate(model.rate1, args...)
+    l2 = model.lambda_pop == 1 ? -Inf : log1p(-model.lambda_pop) + log_event_rate(model.rate2, args...)
+    return logaddexp(l1, l2)
 end
 
 end

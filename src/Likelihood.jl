@@ -61,6 +61,12 @@ _required_columns(::CBCSingleMassRate) = (:mass_1, :luminosity_distance)
 _required_columns(::CBCTotalMassQRate) = (:total_mass, :mass_ratio, :luminosity_distance)
 _required_columns(::CBCRedshiftPrimaryQRate) = (:mass_1, :mass_ratio, :luminosity_distance)
 _required_columns(model::SpinWeightedRate) = (_required_columns(model.base)..., model.spin_columns...)
+function _required_columns(model::MixtureRate)
+    cols1 = _required_columns(model.rate1)
+    cols2 = _required_columns(model.rate2)
+    cols1 == cols2 || throw(ArgumentError("MixtureRate components must use the same event columns for likelihood evaluation"))
+    return cols1
+end
 
 _is_scale_free(model) = getproperty(model, :scale_free)
 _is_scale_free(model::SpinWeightedRate) = _is_scale_free(model.base)

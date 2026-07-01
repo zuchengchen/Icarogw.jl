@@ -22,8 +22,14 @@ export AbstractPrior,
     RedshiftConditionalMassDistribution,
     PairedMassDistribution,
     PiecewiseConstant2D,
+    Bivariate2DGaussian,
     LowpassSmoothedProb,
     SmoothedPlusDipProb,
+    lowpass_filter,
+    highpass_filter,
+    notch_filter,
+    mixed_linear_function,
+    mixed_double_sigmoid_function,
     PowerLawStationary,
     PowerLawLinear,
     GaussianStationary,
@@ -52,7 +58,7 @@ _bounds_logpdf(x, lo, hi, value) = _inrange(x, lo, hi) ? value : -Inf
 logpdf(p::AbstractPrior, x::AbstractArray) = map(v -> logpdf(p, v), x)
 pdf(p::AbstractPrior, x) = exp.(logpdf(p, x))
 cdf(p::AbstractPrior, x::AbstractArray) = map(v -> cdf(p, v), x)
-logpdf(p::AbstractPrior, x::AbstractArray, z::AbstractArray) = map(logpdf, Ref(p), x, z)
+logpdf(p::AbstractPrior, x::AbstractArray, z::AbstractArray) = map((a, b) -> logpdf(p, a, b), x, z)
 pdf(p::AbstractPrior, x, z) = exp.(logpdf(p, x, z))
 
 """
@@ -470,6 +476,97 @@ _sigmoid_window(x, edge, delta, highpass::Bool) = delta == 0 ? 1.0 :
         1 / (1 + exp(delta / (edge - x) + delta / (edge - x - delta))))
 _notch(x, left, dleft, right, dright, depth) =
     1 - depth * _sigmoid_window(x, left, dleft, true) * _sigmoid_window(x, right, dright, false)
+
+"""
+    highpass_filter(x, edge, delta)
+
+Smooth turn-on window used by Python `_highpass_filter`.
+"""
+highpass_filter(x::Real, edge::Real, delta::Real) = _sigmoid_window(float(x), float(edge), float(delta), true)
+highpass_filter(x, edge::Real, delta::Real) = highpass_filter.(x, edge, delta)
+
+"""
+    lowpass_filter(x, edge, delta)
+
+Smooth turn-off window used by Python `_lowpass_filter`.
+"""
+lowpass_filter(x::Real, edge::Real, delta::Real) = _sigmoid_window(float(x), float(edge), float(delta), false)
+lowpass_filter(x, edge::Real, delta::Real) = lowpass_filter.(x, edge, delta)
+
+"""
+    notch_filter(x, left, dleft, right, dright, depth)
+
+Window `1 - depth * highpass_filter(x, left, dleft) * lowpass_filter(x, right, dright)`.
+"""
+notch_filter(x::Real, left::Real, dleft::Real, right::Real, dright::Real, depth::Real) =
+    _notch(float(x), float(left), float(dleft), float(right), float(dright), float(depth))
+notch_filter(x, left::Real, dleft::Real, right::Real, dright::Real, depth::Real) =
+    notch_filter.(x, left, dleft, right, dright, depth)
+
+"""
+    mixed_linear_function(x, x0, x1)
+
+Linear interpolation `(x1 - x0) * x + x0`.
+"""
+mixed_linear_function(x, x0, x1) = (x1 - x0) .* x .+ x0
+
+"""
+    mixed_double_sigmoid_function(x, xt, delta_xt, mix_x0, mix_x1)
+
+Sigmoid transition from `mix_x0` to `mix_x1`, matching Python
+`_mixed_double_sigmoid_function`.
+"""
+mixed_double_sigmoid_function(x, xt, delta_xt, mix_x0, mix_x1) =
+    mix_x1 .+ (mix_x0 - mix_x1) ./ (1 .+ exp.((x .- xt) ./ delta_xt))
+
+_gaussian_trunc_norm(lo, hi, mean, sigma) =
+    0.5 * erf((hi - mean) / (sigma * sqrt(2))) - 0.5 * erf((lo - mean) / (sigma * sqrt(2)))
+
+"""
+    Bivariate2DGaussian(...)
+
+Truncated bivariate Gaussian expressed as a truncated marginal in `x1` times a
+truncated conditional Gaussian in `x2 | x1`, matching Python
+`Bivariate2DGaussian`.
+"""
+struct Bivariate2DGaussian <: AbstractPrior
+    x1min::Float64
+    x1max::Float64
+    x1mean::Float64
+    x2min::Float64
+    x2max::Float64
+    x2mean::Float64
+    x1variance::Float64
+    x12covariance::Float64
+    x2variance::Float64
+    norm_marginal_1::Float64
+end
+function Bivariate2DGaussian(; x1min, x1max, x1mean, x2min, x2max, x2mean,
+    x1variance, x12covariance, x2variance)
+    x1min < x1max || throw(ArgumentError("x1min must be smaller than x1max"))
+    x2min < x2max || throw(ArgumentError("x2min must be smaller than x2max"))
+    x1variance > 0 && x2variance > 0 || throw(ArgumentError("variances must be positive"))
+    condvar = x2variance - x12covariance^2 / x1variance
+    condvar > 0 || throw(ArgumentError("conditional variance must be positive"))
+    norm1 = _gaussian_trunc_norm(x1min, x1max, x1mean, sqrt(x1variance))
+    norm1 > 0 || throw(ArgumentError("invalid x1 truncation normalization"))
+    return Bivariate2DGaussian(float(x1min), float(x1max), float(x1mean), float(x2min), float(x2max),
+        float(x2mean), float(x1variance), float(x12covariance), float(x2variance), norm1)
+end
+function logpdf(p::Bivariate2DGaussian, x1::Real, x2::Real)
+    p.x1min <= x1 <= p.x1max && p.x2min <= x2 <= p.x2max || return -Inf
+    marginal = -0.5 * log(2pi * p.x1variance) - 0.5 * (x1 - p.x1mean)^2 / p.x1variance -
+        log(p.norm_marginal_1)
+    mean2 = p.x2mean + (p.x12covariance / p.x1variance) * (x1 - p.x1mean)
+    var2 = p.x2variance - p.x12covariance^2 / p.x1variance
+    norm2 = _gaussian_trunc_norm(p.x2min, p.x2max, mean2, sqrt(var2))
+    norm2 > 0 || return -Inf
+    conditional = -0.5 * log(2pi * var2) - 0.5 * (x2 - mean2)^2 / var2 - log(norm2)
+    return marginal + conditional
+end
+pdf(p::Bivariate2DGaussian, x1::Real, x2::Real) = exp(logpdf(p, x1, x2))
+logpdf(p::Bivariate2DGaussian, x1::AbstractArray, x2::AbstractArray) = map((a, b) -> logpdf(p, a, b), x1, x2)
+pdf(p::Bivariate2DGaussian, x1::AbstractArray, x2::AbstractArray) = exp.(logpdf(p, x1, x2))
 
 """
     LowpassSmoothedProb(origin, delta_m)

@@ -52,15 +52,14 @@ complete until the final review checklist proves full scientific coverage.
   energy-spectrum and vanilla spectral-siren helpers. Stochastic-only
   likelihoods, data products, and joint likelihoods remain open.
 - `rates.py` and `likelihood.py`: catalog-aware rates, EM counterpart rates,
-  mixed population rates, stochastic-only likelihoods, and CBC+stochastic joint
-  likelihoods.
+  stochastic-only likelihoods, and CBC+stochastic joint likelihoods.
 - `posterior_samples.py` and `injections.py`: catalog/skymap pixelization,
   counterpart attachment, cut/resampling helpers, and catalog-aware workflows.
 - `conversions.py`: `ligo_skymap`, HEALPix coordinate helpers, and joint
   effective-spin KDE helpers.
 - `priors.py` and `wrappers.py`: advanced evolving smoothers, dip/bin/Farah
-  wrappers, extended spin families, bivariate Gaussian, and absolute-luminosity
-  priors.
+  wrappers, extended spin families, and absolute-luminosity priors. Window
+  helpers and bivariate Gaussian parity are implemented with fixture coverage.
 - `simulation.py`: detector/source-frame SNR helpers, measurement-noise
   helpers, flat-SNR scaling, deterministic quick likelihood factors, and
   frequency/SNR cuts are implemented with fixture coverage. The large

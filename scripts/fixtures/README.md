@@ -33,6 +33,10 @@ the Python reference checkout.
   `utils.py`, and `cupy_pal.py`. It uses lightweight import stubs for optional
   Python dependencies and does not exercise random draws or catalog/skymap
   workflows.
+- `priors-rates-smoke`: deterministic formulas from `priors.py` plus the
+  `CBC_mixte_pop_rate` logaddexp mixture identity. It covers window helpers,
+  `Bivariate2DGaussian`, and mixture-rate arithmetic without mutable Python
+  wrapper state.
 - `catalog-smoke`: reserved for the catalog migration phase and intentionally
   not implemented yet.
 - `all-small`: all currently implemented small suites.

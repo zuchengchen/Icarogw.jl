@@ -119,6 +119,26 @@ end
     @test snr_and_freq_cut(sim_ref.m1, sim_ref.m2, sim_ref.z, [13.0, 9.0, 20.0]; snr_threshold=12.0, fgw_cut=15.0) ==
           findall(_truthy.(sim_ref.passes_snr_freq))
     @test snr_cut_flat([13.0, 9.0, 20.0]; snr_threshold=12.0) == findall(_truthy.(sim_ref.passes_snr_flat))
+
+    priors_rates_ref = CSV.File(joinpath(refdir, "reference_priors_rates.csv")) |> DataFrame
+    @test highpass_filter(priors_rates_ref.x, 5.0, 2.0) ≈ priors_rates_ref.highpass rtol=1e-14
+    @test lowpass_filter(priors_rates_ref.x, 8.0, 2.0) ≈ priors_rates_ref.lowpass rtol=1e-14
+    @test notch_filter(priors_rates_ref.x, 5.0, 2.0, 8.0, 2.0, 0.4) ≈ priors_rates_ref.notch rtol=1e-14
+    @test mixed_linear_function(priors_rates_ref.x ./ 10.0, 0.2, 0.8) ≈ priors_rates_ref.mixed_linear rtol=1e-14
+    @test mixed_double_sigmoid_function(priors_rates_ref.x ./ 10.0, 0.55, 0.15, 0.2, 0.8) ≈
+          priors_rates_ref.mixed_sigmoid rtol=1e-14
+    bivar = Bivariate2DGaussian(
+        x1min=-1.0,
+        x1max=1.0,
+        x1mean=0.0,
+        x2min=-2.0,
+        x2max=2.0,
+        x2mean=0.1,
+        x1variance=0.5,
+        x12covariance=0.1,
+        x2variance=1.0,
+    )
+    @test logpdf(bivar, priors_rates_ref.x1, priors_rates_ref.x2) ≈ priors_rates_ref.bivariate_logpdf rtol=2e-14
 end
 
 @testset "priors and schema" begin
@@ -326,6 +346,16 @@ end
     eff_rate = SpinWeightedRate(CBCMass1Rate(c, mass, qprior, rate; R0=1), eff_prior)
     @test log_event_rate(eff_rate, m1d, q, dl, 0.1, 0.3, prior) ≈
         log_event_rate(eff_rate.base, m1d, q, dl, prior) + logpdf(eff_prior, 0.1, 0.3)
+
+    mixture = MixtureRate(
+        CBCVanillaRate(c, ConditionalMassDistribution(mass, PowerLaw(5.0, 100.0, 1.0)), PowerLawRate(0.0); R0=1),
+        CBCVanillaRate(c, ConditionalMassDistribution(mass, PowerLaw(5.0, 100.0, 1.0)), PowerLawRate(1.0); R0=1),
+        0.35,
+    )
+    l1 = log_event_rate(mixture.rate1, m1d, m2d, dl, prior)
+    l2 = log_event_rate(mixture.rate2, m1d, m2d, dl, prior)
+    @test log_event_rate(mixture, m1d, m2d, dl, prior) ≈ logaddexp(log(0.35) + l1, log1p(-0.35) + l2)
+    @test isfinite(loglikelihood(mixture, PopulationData(PosteriorSampleSet(ps_pair), inj_pair)))
 end
 
 @testset "planned placeholders" begin
