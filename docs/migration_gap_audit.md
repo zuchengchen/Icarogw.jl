@@ -47,6 +47,8 @@ complete until the final review checklist proves full scientific coverage.
 - `catalog.py`: complete pixelated catalog preparation, HDF5/FITS-compatible
   runtime catalog types, redshift grids, magnitude thresholds, effective galaxy
   number interpolants, GW skymap intersections, k-corrections, and EM helpers.
+  The dependency-light Schechter luminosity-function and absolute-magnitude
+  rate formulas used by those workflows are implemented separately.
 - `stochastic.py` and `omega_gw.py`: duplicated `dEdf`, omega-weight, and
   spectral-siren logic is now partially unified in Julia through deterministic
   energy-spectrum, vanilla spectral-siren, Gaussian stochastic-only, and

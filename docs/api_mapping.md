@@ -36,7 +36,7 @@ Status meanings:
 | `extraD_astropycosmology` | `ExtraDCosmology` | implemented/renamed | Luminosity-distance wrapper. |
 | `cM_astropycosmology` | `PlanckMassCosmology` | implemented/renamed | Native integral. |
 | `alphalog_astropycosmology` | `AlphaLogCosmology` | implemented/renamed | Luminosity-distance wrapper. |
-| `galaxy_MF`, `basic_absM_rate`, `log_powerlaw_absM_rate` | catalog module placeholder | planned | Catalog first-version exclusion. |
+| `galaxy_MF`, `basic_absM_rate`, `log_powerlaw_absM_rate` | `GalaxyLuminosityFunction`, `AbstractAbsMagnitudeRate`, `LogPowerLawAbsMagnitudeRate` | implemented/renamed | Dependency-light Schechter and absolute-magnitude rate formulas with fixture coverage; full catalog runtime remains planned. |
 | `powerlaw_rate`, `md_rate`, `md_gamma_rate`, `beta_rate`, `beta_rate_line` | `PowerLawRate`, `MadauRate`, `MadauGammaRate`, `BetaRate`, `BetaLineRate` | implemented/renamed | Native structs. |
 
 ## conversions.py

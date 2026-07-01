@@ -37,8 +37,9 @@ the Python reference checkout.
   `CBC_mixte_pop_rate` logaddexp mixture identity. It covers window helpers,
   `Bivariate2DGaussian`, and mixture-rate arithmetic without mutable Python
   wrapper state.
-- `catalog-smoke`: reserved for the catalog migration phase and intentionally
-  not implemented yet.
+- `catalog-smoke`: dependency-light Schechter luminosity-function and
+  absolute-magnitude rate formulas from `cosmology.py`; it does not load
+  catalog/skymap files or optional HEALPix dependencies.
 - `all-small`: all currently implemented small suites.
 
 Generated files use the prefix `generated_reference_`. Review them before

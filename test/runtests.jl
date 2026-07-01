@@ -35,6 +35,14 @@ end
     @test ddl_dz(c, z) > 0
     @test luminosity_distance(FlatwCDM(H0=67.7, Om0=0.308, w0=-1, zmax=5), z) ≈ dl rtol=1e-10
     @test luminosity_distance(Flatw0waCDM(H0=67.7, Om0=0.308, w0=-1, wa=0, zmax=5), z) ≈ dl rtol=1e-10
+    glf = GalaxyLuminosityFunction("K-glade+"; cosmology=c)
+    @test galaxy_MF === GalaxyLuminosityFunction
+    @test log_powerlaw_absM_rate === LogPowerLawAbsMagnitudeRate
+    @test basic_absM_rate === AbstractAbsMagnitudeRate
+    @test glf.Mstarobs ≈ -23.39 + 5log10(c.H0 / 100)
+    @test luminosity_function_norm(glf, 0.2) > 0
+    @test isfinite(log_luminosity_pdf(glf, -24.0, 0.2))
+    @test length(sample_luminosity_function(MersenneTwister(4), glf, 4, 0.2)) == 4
     @test cred_interval(1.0) ≈ 0.6826894921370859 rtol=1e-12
     @test chirp_mass(30.0, 20.0) ≈ (30 * 20)^(3 / 5) / 50^(1 / 5)
     @test mass_ratio(30.0, 20.0) ≈ 2 / 3
@@ -61,6 +69,23 @@ end
         @test ddl_dz(c, row.z) ≈ row.ddl_dz rtol=4e-7
         @test redshift_at_luminosity_distance(c, row.luminosity_distance) ≈ row.dl2z atol=2e-7
     end
+    catalog_ref = CSV.File(joinpath(refdir, "reference_catalog_luminosity.csv")) |> DataFrame
+    catalog_lf = GalaxyLuminosityFunction(first(catalog_ref.band); cosmology=FlatLambdaCDM(H0=100 * first(catalog_ref.little_h)))
+    abs_rate = LogPowerLawAbsMagnitudeRate(first(catalog_ref.epsilon))
+    @test catalog_lf.Mminobs ≈ first(catalog_ref.Mminobs) rtol=2e-14
+    @test catalog_lf.Mmaxobs ≈ first(catalog_ref.Mmaxobs) rtol=2e-14
+    @test catalog_lf.Mstarobs ≈ first(catalog_ref.Mstarobs) rtol=2e-14
+    @test catalog_lf.phistarobs ≈ first(catalog_ref.phistarobs) rtol=2e-14
+    @test first.(evolved_luminosity_parameters(catalog_lf, catalog_ref.redshift)) ≈ catalog_ref.phistar_z rtol=2e-14
+    @test last.(evolved_luminosity_parameters(catalog_lf, catalog_ref.redshift)) ≈ catalog_ref.Mstar_z rtol=2e-14
+    @test log_luminosity_function(catalog_lf, catalog_ref.M_abs, catalog_ref.redshift) ≈ catalog_ref.log_luminosity_function rtol=2e-14
+    @test luminosity_function(catalog_lf, catalog_ref.M_abs, catalog_ref.redshift) ≈ catalog_ref.luminosity_function rtol=2e-14
+    @test log_abs_magnitude_rate(abs_rate, catalog_lf, catalog_ref.M_abs) ≈ catalog_ref.log_abs_magnitude_rate rtol=2e-14
+    @test abs_magnitude_rate(abs_rate, catalog_lf, catalog_ref.M_abs) ≈ catalog_ref.abs_magnitude_rate rtol=2e-14
+    @test background_effective_galaxy_density(catalog_lf, catalog_ref.Mthr, catalog_ref.redshift, abs_rate) ≈
+          catalog_ref.background_effective_density rtol=4e-4 atol=1e-12
+    @test background_effective_galaxy_density(catalog_lf, first(catalog_ref.Mthr), first(catalog_ref.redshift);
+        epsilon=first(catalog_ref.epsilon)) ≈ first(catalog_ref.background_effective_density) rtol=4e-4
 
     conv_ref = only(CSV.File(joinpath(refdir, "reference_conversions_core.csv")) |> DataFrame |> eachrow)
     @test chirp_mass(conv_ref.m1, conv_ref.m2) ≈ conv_ref.chirp_mass rtol=1e-14

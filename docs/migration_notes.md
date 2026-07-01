@@ -67,6 +67,12 @@ This is simpler for the first native version and avoids a Python dependency.
 Future performance work can add explicit cosmology workspaces or interpolation
 caches.
 
+Catalog luminosity formulas that do not require skymap or catalog file formats
+are native Julia: `GalaxyLuminosityFunction` covers Python `galaxy_MF`, and
+`LogPowerLawAbsMagnitudeRate` covers `log_powerlaw_absM_rate`. The Julia
+normalization uses direct quadrature so common Schechter slopes remain finite
+where the Python incomplete-gamma branch can return `NaN`.
+
 ## Model Composition
 
 Python wrapper classes such as `PowerLaw_PowerLaw`,
@@ -98,6 +104,8 @@ inside likelihood loops. Further performance work should focus on:
 
 - Numerical distances may differ slightly from Astropy because integration and
   constants are native Julia.
+- Schechter luminosity-function normalization uses direct quadrature instead
+  of Python's incomplete-gamma branch for negative `alpha + 1` values.
 - The simulation helpers are quick, seeded mock-data tools rather than full
   detector simulations.
 - Python wrapper classes are represented by composable Julia structs rather

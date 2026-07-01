@@ -17,6 +17,7 @@ import pathlib
 import sys
 import types
 import numpy as np
+import scipy.integrate
 from typing import Iterable
 
 
@@ -143,6 +144,38 @@ def _load_lightweight_conversions_module():
     sys.modules.setdefault("astropy.units", units_stub)
 
     return _load_reference_module("icarogw.reference_conversions", "icarogw/conversions.py")
+
+
+def _install_mpmath_stub() -> None:
+    """Install the tiny ``mpmath.gammainc`` surface used by ``cosmology.py``."""
+
+    if "mpmath" in sys.modules:
+        return
+    mpmath_stub = types.ModuleType("mpmath")
+
+    def gammainc(shape, a=None, b=None):
+        lo = 0.0 if a is None else float(a)
+        hi = math.inf if b is None else float(b)
+        value, _ = scipy.integrate.quad(
+            lambda x: x ** (float(shape) - 1) * math.exp(-x),
+            lo,
+            hi,
+            epsabs=1e-12,
+            epsrel=1e-12,
+            limit=200,
+        )
+        return value
+
+    mpmath_stub.gammainc = gammainc
+    sys.modules["mpmath"] = mpmath_stub
+
+
+def _load_lightweight_cosmology_module():
+    """Load ``cosmology.py`` without requiring the full Python catalog stack."""
+
+    _install_lightweight_reference_package()
+    _install_mpmath_stub()
+    return _load_reference_module("icarogw.reference_cosmology", "icarogw/cosmology.py")
 
 
 def _write_rows(path: pathlib.Path, fieldnames: Iterable[str], rows: Iterable[dict]) -> None:
@@ -618,6 +651,83 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
     return [path]
 
 
+def generate_catalog_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
+    """Generate dependency-light catalog luminosity-function fixtures."""
+
+    cosmology = _load_lightweight_cosmology_module()
+
+    class _CosmologyProxy:
+        little_h = 0.677
+
+    sch = cosmology.galaxy_MF(band="K-glade+")
+    sch.build_MF(_CosmologyProxy())
+    epsilon = 0.8
+    abs_rate = cosmology.log_powerlaw_absM_rate(epsilon=epsilon)
+    sch.build_effective_number_density_interpolant(epsilon)
+
+    M_abs = np.array([-25.0, -22.0, -18.0])
+    z = np.array([0.0, 0.5, 1.0])
+    Mthr = np.array([-26.0, -22.0, -18.0])
+    phistar, Mstar = sch.get_evol_phi_Mstar(z)
+    log_lf = sch.log_evaluate(M_abs.copy(), z)
+    lf = sch.evaluate(M_abs.copy(), z)
+    log_abs_rate = abs_rate.log_evaluate(sch, M_abs.copy())
+    abs_rate_eval = abs_rate.evaluate(sch, M_abs.copy())
+    background_density = sch.background_effective_galaxy_density(Mthr, z)
+
+    rows = []
+    for i in range(len(M_abs)):
+        rows.append(
+            {
+                "i": i + 1,
+                "band": "K-glade+",
+                "little_h": _CosmologyProxy.little_h,
+                "Mminobs": sch.Mminobs,
+                "Mmaxobs": sch.Mmaxobs,
+                "Mstarobs": sch.Mstarobs,
+                "phistarobs": sch.phistarobs,
+                "epsilon": epsilon,
+                "M_abs": M_abs[i],
+                "redshift": z[i],
+                "Mthr": Mthr[i],
+                "phistar_z": phistar[i],
+                "Mstar_z": Mstar[i],
+                "log_luminosity_function": log_lf[i],
+                "luminosity_function": lf[i],
+                "log_abs_magnitude_rate": log_abs_rate[i],
+                "abs_magnitude_rate": abs_rate_eval[i],
+                "background_effective_density": background_density[i],
+            }
+        )
+
+    path = outdir / "generated_reference_catalog_luminosity.csv"
+    _write_rows(
+        path,
+        (
+            "i",
+            "band",
+            "little_h",
+            "Mminobs",
+            "Mmaxobs",
+            "Mstarobs",
+            "phistarobs",
+            "epsilon",
+            "M_abs",
+            "redshift",
+            "Mthr",
+            "phistar_z",
+            "Mstar_z",
+            "log_luminosity_function",
+            "luminosity_function",
+            "log_abs_magnitude_rate",
+            "abs_magnitude_rate",
+            "background_effective_density",
+        ),
+        rows,
+    )
+    return [path]
+
+
 def not_yet_available(name: str) -> None:
     raise SystemExit(
         f"Fixture suite '{name}' is not implemented yet. Add it when the corresponding "
@@ -649,7 +759,7 @@ def main() -> int:
     if args.suite in ("priors-rates-smoke", "all-small"):
         generated.extend(generate_priors_rates_smoke(args.outdir))
     if args.suite == "catalog-smoke":
-        not_yet_available(args.suite)
+        generated.extend(generate_catalog_smoke(args.outdir))
 
     for path in generated:
         try:
