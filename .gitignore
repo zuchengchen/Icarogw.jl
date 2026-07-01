@@ -1,2 +1,9 @@
 Manifest.toml
 examples/basic_population_diagnostics.png
+__pycache__/
+*.py[cod]
+test/integration/data/
+test/reference/generated_reference_*.csv
+test/reference/generated_reference_*.h5
+test/reference/generated_reference_*.hdf5
+test/reference/generated_reference_*.npz

@@ -3,6 +3,13 @@
 This document tracks first-version migration status from `../icarogw/icarogw`
 to native Julia `Icarogw.jl`.
 
+For the active full-science migration goal, use
+[`docs/migration_gap_audit.csv`](migration_gap_audit.csv) as the
+machine-readable gap tracker and [`docs/migration_gap_audit.md`](migration_gap_audit.md)
+as the human-readable phase plan. Items marked `planned` here are no longer
+out of scope for the full-science goal unless the gap audit marks them
+`excluded`.
+
 Status meanings:
 
 - `implemented`: native Julia implementation exists in first-version scope.

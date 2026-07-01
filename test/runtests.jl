@@ -281,3 +281,46 @@ end
     @test_throws ErrorException Icarogw.Stochastic.stochastic_planned()
     @test_throws ErrorException Icarogw.OmegaGW.omega_gw_planned()
 end
+
+@testset "migration control files" begin
+    repo = dirname(@__DIR__)
+    goal_file = joinpath(repo, "2026-07-01-complete-python-science-features.md")
+    audit_path = joinpath(repo, "docs", "migration_gap_audit.csv")
+    audit_doc = joinpath(repo, "docs", "migration_gap_audit.md")
+    fixture_script = joinpath(repo, "scripts", "fixtures", "generate_python_reference.py")
+    integration_runner = joinpath(repo, "test", "integration", "runtests.jl")
+    checklist = joinpath(repo, "docs", "reviews", "module_review_checklist.md")
+
+    for path in (goal_file, audit_path, audit_doc, fixture_script, integration_runner, checklist)
+        @test isfile(path)
+    end
+
+    audit = CSV.File(audit_path) |> DataFrame
+    @test names(audit) == [
+        "python_module",
+        "python_api",
+        "feature_area",
+        "julia_target",
+        "status",
+        "fixture_priority",
+        "next_phase",
+        "notes",
+    ]
+    @test nrow(audit) >= 40
+    @test Set(unique(audit.status)) ⊆ Set(["implemented", "partial", "missing", "excluded"])
+    @test Set(unique(audit.fixture_priority)) ⊆ Set(["existing", "high", "medium", "low", "none"])
+    @test all(!ismissing, audit.notes)
+
+    modules = Set(audit.python_module)
+    for mod in ("catalog.py", "stochastic.py", "omega_gw.py", "rates.py", "likelihood.py",
+        "posterior_samples.py", "injections.py", "conversions.py", "priors.py", "wrappers.py",
+        "simulation.py", "utils.py", "cupy_pal.py")
+        @test mod in modules
+    end
+
+    @test any((audit.python_module .== "catalog.py") .& (audit.status .== "missing") .& (audit.fixture_priority .== "high"))
+    @test any((audit.python_module .== "stochastic.py") .& (audit.status .== "missing") .& (audit.fixture_priority .== "high"))
+    @test any((audit.python_module .== "omega_gw.py") .& (audit.status .== "missing") .& (audit.fixture_priority .== "high"))
+    @test any((audit.python_module .== "utils.py") .& (audit.status .== "missing"))
+    @test any((audit.python_module .== "cupy_pal.py") .& (audit.status .== "excluded"))
+end
