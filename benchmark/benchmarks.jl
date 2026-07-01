@@ -17,6 +17,9 @@ display(@benchmark loglikelihood(SimplePowerLawPopulation, $data, $theta))
 println("diagnostics and weighting")
 display(@benchmark likelihood_diagnostics(SimplePowerLawPopulation, $data, $theta))
 
+println("parallel posterior workspace")
+display(@benchmark build_parallel_posterior($rng, $(data.posteriors), 64))
+
 println("simulation mock generation")
 display(@benchmark simulate_population_data($rng, $model; nevents=1, nsamples=64, ndetected=64, ntotal=500, zmax=0.5))
 

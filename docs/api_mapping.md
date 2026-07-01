@@ -111,12 +111,14 @@ Status meanings:
 | --- | --- | --- | --- |
 | `posterior_samples` | `PosteriorSamples` | implemented/renamed | Array-backed columns. |
 | `posterior_samples_catalog` | `PosteriorSampleSet` | implemented/renamed | Ordered collection. |
+| `posterior_samples_catalog.build_parallel_posterior` | `build_parallel_posterior`, `ParallelPosterior` | implemented/renamed | RNG-explicit matrix workspace with fill mask and per-event sample counts. |
 | `injections` | `InjectionSet` | implemented/renamed | Includes `ntotal` and `Tobs`. |
 | `update_weights` methods | likelihood internals | merged | Weights are computed by pure functions. |
 | `effective_injections_number`, PE effective number | `effective_sample_size` | implemented/renamed | Works from log weights or model+container. |
 | `expected_number_detections` | `expected_number_detections` | implemented | Uses injection pseudo-rate convention. |
 | `update_cut`, `reweight_PE`, `return_reweighted_injections` | `subset_injections`, `subset_posterior_samples`, `reweight_posterior_samples`, `reweight_injections` | implemented/renamed | RNG-explicit pure helpers. |
-| pixelization/catalog methods | catalog future module | planned | First-version exclusion. |
+| `posterior_samples.add_counterpart` | `add_counterpart` | implemented/renamed | Dependency-light `z_EM` column attachment; sky-direction filtering remains skymap-dependent. |
+| pixelization/catalog methods | catalog/skymap future module | planned | Requires FITS/HEALPix/NUNIQ dependency decision. |
 
 ## likelihood.py
 

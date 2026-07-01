@@ -385,6 +385,21 @@ end
     ps_subset = subset_posterior_samples(first(tiny.posteriors.events), [1, 3])
     @test length(ps_subset.prior) == 2
     @test ps_subset.event_name == first(tiny.posteriors.events).event_name
+    counterpart = add_counterpart(first(tiny.posteriors.events), [0.11, 0.12, 0.13])
+    @test :z_EM in counterpart.names
+    @test collect(column(counterpart, :z_EM)) == [0.11, 0.12, 0.13]
+    @test first(tiny.posteriors.events).names == [:mass_1, :mass_2, :luminosity_distance]
+    parallel = build_parallel_posterior(MersenneTwister(11), PosteriorSampleSet(ps_subset, first(tiny.posteriors.events)), 3)
+    @test parallel isa ParallelPosterior
+    @test parallel.event_names == [ps_subset.event_name, first(tiny.posteriors.events).event_name]
+    @test parallel.names == ps_subset.names
+    @test size(parallel.values[:mass_1]) == (2, 3)
+    @test parallel.Ns_array == [2.0, 3.0]
+    @test parallel.weights_mask[1, 3] == true
+    @test parallel.weights_mask[2, 3] == false
+    @test parallel.prior[1, 3] in ps_subset.prior
+    @test_throws ArgumentError build_parallel_posterior(PosteriorSampleSet(ps_subset, counterpart), 2)
+    @test_throws ArgumentError add_counterpart(ps_subset, [0.1])
     rw_inj = reweight_injections(MersenneTwister(7), model, tiny.injections, 3)
     @test length(rw_inj.prior) == 3
     @test rw_inj.ntotal == tiny.injections.ntotal

@@ -58,8 +58,9 @@ complete until the final review checklist proves full scientific coverage.
   full stochastic data-product support, and catalog/EM stochastic joint
   likelihoods. Standard pSEOB weighting composes through `SpinWeightedRate`,
   while Python's pSEOB dummy injection asymmetry remains a specialized gap.
-- `posterior_samples.py` and `injections.py`: catalog/skymap pixelization,
-  counterpart attachment, and catalog-aware workflows. Non-catalog cut,
+- `posterior_samples.py` and `injections.py`: catalog/skymap pixelization and
+  catalog-aware workflows. Dependency-light posterior parallel workspaces,
+  counterpart redshift-column attachment, non-catalog cuts,
   effective-sample-size, expected-detection, and reweighting helpers are
   implemented as pure Julia functions.
 - `conversions.py`: `ligo_skymap` and HEALPix coordinate helpers remain.

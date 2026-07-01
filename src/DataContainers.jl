@@ -3,16 +3,20 @@ module DataContainers
 using CSV
 using DataFrames
 using HDF5
+using Random
 using Tables
 using ..Utils: assert_same_length
 
 export PosteriorSamples,
     PosteriorSampleSet,
+    ParallelPosterior,
     InjectionSet,
     PopulationData,
     column,
     validate,
     subset_posterior_samples,
+    add_counterpart,
+    build_parallel_posterior,
     subset_injections,
     read_posterior_csv,
     read_injections_csv,
@@ -72,6 +76,23 @@ function PosteriorSampleSet(events::Dict)
     return PosteriorSampleSet([PosteriorSamples(v; event_name=Symbol(k)) for (k, v) in events])
 end
 Base.length(ps::PosteriorSampleSet) = length(ps.events)
+
+"""
+    ParallelPosterior
+
+Matrix workspace built from a `PosteriorSampleSet`. Rows are events and columns
+are per-event samples. Values beyond an event's available sample count repeat
+the last selected sample and are marked in `weights_mask`, matching the Python
+`posterior_samples_catalog.build_parallel_posterior` masking convention.
+"""
+struct ParallelPosterior
+    names::Vector{Symbol}
+    event_names::Vector{Symbol}
+    values::Dict{Symbol,Matrix{Float64}}
+    prior::Matrix{Float64}
+    weights_mask::BitMatrix
+    Ns_array::Vector{Float64}
+end
 
 """
     InjectionSet(data, prior; ntotal, Tobs=1)
@@ -134,6 +155,79 @@ Return a zero-copy vector view of a named container column.
 """
 column(ps::PosteriorSamples, name::Symbol) = view(ps.values, :, column_index(ps.names, name))
 column(inj::InjectionSet, name::Symbol) = view(inj.values, :, column_index(inj.names, name))
+
+function _append_column(names::Vector{Symbol}, values::Matrix{Float64}, name::Symbol, column_values::AbstractVector)
+    vals = Float64.(collect(column_values))
+    size(values, 1) == length(vals) || throw(ArgumentError("new column :$name length $(length(vals)) does not match row count $(size(values, 1))"))
+    idx = findfirst(==(name), names)
+    if idx === nothing
+        newnames = [names; name]
+        newvalues = hcat(values, vals)
+    else
+        newnames = copy(names)
+        newvalues = copy(values)
+        newvalues[:, idx] = vals
+    end
+    return newnames, Matrix{Float64}(newvalues)
+end
+
+"""
+    add_counterpart(samples, z_EM)
+
+Return a posterior container with a `:z_EM` column attached or replaced. This
+is the dependency-light part of Python `posterior_samples.add_counterpart`;
+sky-pixel filtering remains in the catalog/skymap workflow.
+"""
+function add_counterpart(ps::PosteriorSamples, z_EM)
+    names, values = _append_column(ps.names, ps.values, :z_EM, z_EM)
+    return PosteriorSamples(ps.event_name, names, values, copy(ps.prior)) |> validate
+end
+
+function _common_names(events::Vector{PosteriorSamples})
+    isempty(events) && throw(ArgumentError("PosteriorSampleSet must contain at least one event"))
+    names = copy(first(events).names)
+    for event in events[2:end]
+        names == event.names || throw(ArgumentError("all posterior events must have the same column order to build a parallel posterior"))
+    end
+    return names
+end
+
+"""
+    build_parallel_posterior(rng, posterior_set, nparallel=nothing)
+
+Draw up to `nparallel` samples per event into a matrix workspace. When
+`nparallel === nothing`, the minimum event sample count is used. Events with
+fewer samples than `nparallel` repeat their last selected draw and mark those
+filled entries in `weights_mask`.
+"""
+function build_parallel_posterior(rng::AbstractRNG, set::PosteriorSampleSet, nparallel::Union{Nothing,Integer}=nothing)
+    names = _common_names(set.events)
+    nsamps = [length(event.prior) for event in set.events]
+    isempty(nsamps) && throw(ArgumentError("PosteriorSampleSet must contain at least one event"))
+    npar = nparallel === nothing ? minimum(nsamps) : Int(nparallel)
+    npar > 0 || throw(ArgumentError("nparallel must be positive"))
+    nev = length(set.events)
+    values = Dict(name => Matrix{Float64}(undef, nev, npar) for name in names)
+    prior = Matrix{Float64}(undef, nev, npar)
+    mask = falses(nev, npar)
+    Ns_array = ones(Float64, nev)
+    for (i, event) in enumerate(set.events)
+        len_single = length(event.prior)
+        ntake = min(len_single, npar)
+        Ns_array[i] = ntake
+        perm = randperm(rng, len_single)[1:ntake]
+        fill_index = last(perm)
+        for (j, name) in enumerate(names)
+            values[name][i, 1:ntake] = event.values[perm, j]
+            ntake < npar && (values[name][i, ntake+1:npar] .= event.values[fill_index, j])
+        end
+        prior[i, 1:ntake] = event.prior[perm]
+        ntake < npar && (prior[i, ntake+1:npar] .= event.prior[fill_index]; mask[i, ntake+1:npar] .= true)
+    end
+    return ParallelPosterior(names, [event.event_name for event in set.events], values, prior, mask, Ns_array)
+end
+build_parallel_posterior(set::PosteriorSampleSet, nparallel::Union{Nothing,Integer}=nothing; rng=Random.default_rng()) =
+    build_parallel_posterior(rng, set, nparallel)
 
 function _row_indices(n::Integer, selector)
     if selector isa AbstractVector{Bool}

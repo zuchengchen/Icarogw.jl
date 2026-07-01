@@ -98,6 +98,14 @@ Spin variants are represented by `SpinWeightedRate(base_model, spin_prior)`,
 which composes `DefaultSpinPrior` or `GaussianSpinPrior` with the mass/redshift
 rate model instead of duplicating every Python spin wrapper class.
 
+## Posterior Workflows
+
+Dependency-light posterior workflows are pure Julia functions. `build_parallel_posterior`
+creates the matrix workspace used by Python `posterior_samples_catalog`, while
+`add_counterpart` attaches EM redshift samples as a `z_EM` column. Sky-direction
+filtering and catalog pixelization still belong to the future skymap/catalog
+runtime because they require FITS/HEALPix/NUNIQ choices.
+
 ## Performance Strategy
 
 The first hot path avoids `Dict`, `DataFrame`, and dynamic wrapper updates
