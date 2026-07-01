@@ -86,8 +86,12 @@ exist.
 `galaxy_catalog` single-file HDF5 products. `create_hdf5` writes the `/catalog`
 group with Python-style zero-based stored `sky_indices`; the Julia reader
 converts those pixels to 1-based rows internally. `calculate_mthr!`,
-`return_counts_map`, `calc_mthr`, and `effective_galaxy_number_interpolant`
-cover the runtime threshold-map, empty-catalog, and effective-count paths.
+`return_counts_map`, `calc_mthr`, `effective_galaxy_number_interpolant`, and
+`check_differential_effective_galaxies` cover the runtime threshold-map,
+empty-catalog, effective-count, and catalog-completeness diagnostic paths.
+`plot_counts_map`, `plot_mthr_map`, and
+`plot_differential_effective_galaxies` provide the plotting equivalents without
+embedding plotting state in the catalog reader.
 
 Pixelated catalog preprocessing is available as file-level Julia helpers:
 `create_pixelated_catalogs`, `clear_empty_pixelated_files`,
@@ -98,8 +102,7 @@ filled-pixel lists, NaN masks, magnitude thresholds, redshift grids, and
 per-pixel effective-galaxy interpolants. The Julia-only
 `build_icarogw_catalog_from_pixelated_files!` helper then aggregates those
 shards into the single HDF5 layout consumed by `IcarogwCatalog`.
-Large-scale job orchestration and EM counterpart rate/likelihood integration
-remain open catalog workflow gaps.
+Large-scale distributed job orchestration remains outside the package runtime.
 
 ## Model Composition
 
@@ -150,18 +153,19 @@ coordinate helpers, with Julia 1-based indexing by default and an explicit
 tables with `UNIQ`, `PROBDENSITY`, `DISTMU`, and `DISTSIGMA`, implements the
 minimal NUNIQ/MOC lookup needed by Python catalog workflows, and evaluates the
 Python-compatible 3D posterior/likelihood. Posterior and injection containers
-can now be pixelized against either HEALPix or catalog NUNIQ/MOC rows. Full
-catalog and EM rate workflows remain a separate phase that will consume these
-primitives.
+can now be pixelized against either HEALPix or catalog NUNIQ/MOC rows, and the
+low-latency EM counterpart rate consumes per-event `LigoSkyMap`s directly.
 
 ## Stochastic Data
 
 Python stochastic likelihoods consume dictionaries with `freqs`, `Cf`, and
 `sigma2s`. Julia represents the same diagonal Gaussian data as `StochasticData`
 and provides `read_stochastic_csv`, `write_stochastic_hdf5`, and
-`read_stochastic_hdf5` for lightweight file workflows. Richer covariance or
-collaboration-specific stochastic products remain future API design rather
-than a Python formula gap.
+`read_stochastic_hdf5` for lightweight file workflows. `joint_loglikelihood`
+combines Poisson CBC and stochastic terms for `SimplePowerLawPopulation`,
+`CBCVanillaRate`, and spin or PE-only wrappers whose stochastic spectrum is the
+Python vanilla CBC spectrum. Richer covariance or collaboration-specific
+stochastic products remain future API design rather than a Python formula gap.
 
 ## Performance Strategy
 

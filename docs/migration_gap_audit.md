@@ -42,40 +42,38 @@ Each phase should keep the repository testable. Stage commits are allowed after
 the phase's relevant verification passes, but this audit should not be marked
 complete until the final review checklist proves full scientific coverage.
 
-## Current Largest Gaps
+## Coverage Summary
 
-- `catalog.py` and `rates.py`: higher-level GW/EM workflow integration remains
-  the largest catalog-side gap. Pixelated catalog preparation now covers
+- `catalog.py` and `rates.py`: pixelated catalog preparation covers
   Python-style `pixel_*.hdf5` shards, NaN/magnitude/redshift-grid preprocessing,
   per-pixel effective-galaxy interpolants, and aggregation into
   `IcarogwCatalog` HDF5 files. The `IcarogwCatalog`, `GwcosmoCatalog`, and
   single-file `GalaxyCatalog` runtime HDF5 readers cover NUNIQ/HEALPix or
   stored-pixel lookup, magnitude thresholds, sky-dependent and averaged
-  effective galaxy interpolants, counts maps, and empty-catalog mode. Bright
-  siren counterpart rates cover vanilla EM redshift columns and low-latency
-  skymap counterpart candidates with per-event `LigoSkyMap`s.
+  effective galaxy interpolants, counts maps, empty-catalog mode, plot helpers,
+  and differential effective-galaxy diagnostics. Bright-siren counterpart rates
+  cover vanilla EM redshift columns and low-latency skymap counterpart
+  candidates with per-event `LigoSkyMap`s.
 - `stochastic.py` and `omega_gw.py`: duplicated `dEdf`, omega-weight, and
   spectral-siren logic is unified in Julia through deterministic
   energy-spectrum, vanilla spectral-siren, Gaussian stochastic-only, simple
-  stochastic CSV/HDF5 readers, and vanilla CBC+stochastic likelihood helpers.
-  Richer covariance/data-product APIs and catalog/EM mixed stochastic
-  likelihoods remain open.
-- `rates.py` and `likelihood.py`: full stochastic data-product support and
-  catalog/EM stochastic joint likelihoods remain open. Catalog-aware CBC rates
-  now consume runtime catalog interpolants and pixelized `:sky_indices`, and
-  EM counterpart rates consume `:z_EM` plus optional skymap sky coordinates.
-  Standard and dummy pSEOB weighting compose through `SpinWeightedRate` and
+  stochastic CSV/HDF5 readers, and Poisson CBC+stochastic likelihood helpers
+  for the Python vanilla stochastic-spectrum path.
+- `rates.py` and `likelihood.py`: catalog-aware CBC rates consume runtime
+  catalog interpolants and pixelized `:sky_indices`; EM counterpart rates
+  consume `:z_EM` plus optional skymap sky coordinates; standard and dummy
+  pSEOB weighting compose through `SpinWeightedRate` and
   `PEOnlySpinWeightedRate`.
 - `posterior_samples.py` and `injections.py`: higher-level catalog-aware
   workflows. Dependency-light posterior parallel workspaces, counterpart
   redshift-column attachment, HEALPix/catalog pixelization, non-catalog cuts,
   effective-sample-size, expected-detection, and reweighting helpers are
   implemented as pure Julia functions.
-- `conversions.py`: HEALPix coordinate helpers and the first `LigoSkyMap`
-  multi-order FITS/NUNIQ workspace are implemented, and the runtime catalog
-  readers plus posterior/injection pixelization consume those skymap
-  primitives. Higher-level catalog/EM workflows still need integration. Joint
-  effective-spin KDE helpers are covered by RNG-explicit Julia implementations.
+- `conversions.py`: HEALPix coordinate helpers and `LigoSkyMap` multi-order
+  FITS/NUNIQ workspace are implemented, and the runtime catalog readers,
+  posterior/injection pixelization, and low-latency EM counterpart rates
+  consume those skymap primitives. Joint effective-spin KDE helpers are covered
+  by RNG-explicit Julia implementations.
 - `priors.py` and `wrappers.py`: standalone advanced priors, extended spin
   families, and dependency-free dip/Farah/bin/multi-peak paired mass wrapper
   compositions are implemented with fixture coverage. Redshift-linear mixture

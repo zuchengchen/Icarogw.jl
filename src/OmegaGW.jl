@@ -32,7 +32,7 @@ const stochastic_loglikelihood = Stochastic.stochastic_loglikelihood
 const joint_loglikelihood = Stochastic.joint_loglikelihood
 
 function omega_gw_planned()
-    throw(ErrorException("Catalog/stochastic mixed likelihoods with catalog/EM rate models are not implemented yet. The Omega_GW energy-spectrum, vanilla spectral-siren, stochastic-only, and vanilla CBC+stochastic helpers are available."))
+    throw(ErrorException("Catalog/EM stochastic joint likelihoods are future API design; Omega_GW energy-spectrum, vanilla spectral-siren, stochastic-only, and vanilla CBC+stochastic helpers are available."))
 end
 
 end

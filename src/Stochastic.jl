@@ -301,21 +301,31 @@ _efunc(c::FlatLambdaCDM, z) = sqrt(c.Om0 * (1 + z)^3 + (1 - c.Om0))
 _mass_pdf(mass::ConditionalMassDistribution, m1, m2) = pdf(mass, m1, m2)
 _mass_pdf(mass, m1, m2) = applicable(pdf, mass, m1, m2) ? pdf(mass, m1, m2) : exp(logpdf(mass, m1, m2))
 
+_omega_population(model) =
+    throw(ArgumentError("spectral_siren_omega_gw supports vanilla FlatLambdaCDM CBC populations; got $(typeof(model))"))
+_omega_population(model::SimplePowerLawPopulation) =
+    (model.cosmology, model.mass, model.redshift_rate, model.R0)
+_omega_population(model::CBCVanillaRate{<:FlatLambdaCDM}) =
+    (model.cosmology, model.mass_distribution, model.redshift_rate, model.R0)
+_omega_population(model::SpinWeightedRate) = _omega_population(model.base)
+_omega_population(model::PEOnlySpinWeightedRate) = _omega_population(model.base)
+
 """
     spectral_siren_omega_gw(model, weights)
 
-Compute the stochastic background spectrum for a `SimplePowerLawPopulation`
-and an `OmegaGWWeights` workspace. This is the Julia-native equivalent of the
-Python `spectral_siren_vanilla_omega_gw` path for vanilla CBC populations.
+Compute the stochastic background spectrum for a vanilla CBC population and an
+`OmegaGWWeights` workspace. This is the Julia-native equivalent of the Python
+`spectral_siren_vanilla_omega_gw` path for vanilla CBC populations.
 """
-function spectral_siren_omega_gw(model::SimplePowerLawPopulation, weights::OmegaGWWeights; return_diagnostics::Bool=false)
-    H0 = _cosmo_h0_si(model.cosmology)
+function spectral_siren_omega_gw(model, weights::OmegaGWWeights; return_diagnostics::Bool=false)
+    cosmology, mass_distribution, redshift_rate, R0 = _omega_population(model)
+    H0 = _cosmo_h0_si(cosmology)
     rho_c = 3 * (H0 * SI_C)^2 / (8pi * SI_G) * (SI_KPC * 1e3)^3
     sample_weights = Vector{Float64}(undef, length(weights))
     for i in eachindex(sample_weights)
-        pm = _mass_pdf(model.mass, weights.m1s[i], weights.m2s[i])
-        pr = exp(log_rate(model.redshift_rate, weights.redshifts[i])) * model.R0
-        rate = pr / _efunc(model.cosmology, weights.redshifts[i]) / (1 + weights.redshifts[i])
+        pm = _mass_pdf(mass_distribution, weights.m1s[i], weights.m2s[i])
+        pr = exp(log_rate(redshift_rate, weights.redshifts[i])) * R0
+        rate = pr / _efunc(cosmology, weights.redshifts[i]) / (1 + weights.redshifts[i])
         sample_weights[i] = rate * pm / (weights.p_z[i] * weights.p_m1[i] * weights.p_m2[i])
     end
     omega = Vector{Float64}(undef, length(weights.frequencies))
@@ -354,9 +364,10 @@ end
 Gaussian stochastic-background log-likelihood, matching Python
 `Stochastic_likelihood_only` up to the omitted normalization constant.
 """
-function stochastic_loglikelihood(model::SimplePowerLawPopulation, weights::OmegaGWWeights, data::StochasticData)
+function stochastic_loglikelihood(model, weights::OmegaGWWeights, data::StochasticData)
     _check_stochastic_axes(weights, data)
-    hscale = model.cosmology.H0 / data.reference_H0
+    cosmology = first(_omega_population(model))
+    hscale = cosmology.H0 / data.reference_H0
     cf = data.Cf .* hscale^(-2)
     sigma2s = data.sigma2s .* hscale^(-4)
     omega = spectral_siren_omega_gw(model, weights)
@@ -370,7 +381,7 @@ end
 
 Poisson CBC hierarchical likelihood plus the stochastic-background likelihood.
 """
-function joint_loglikelihood(model::SimplePowerLawPopulation, population_data::PopulationData,
+function joint_loglikelihood(model, population_data::PopulationData,
     weights::OmegaGWWeights, stochastic_data::StochasticData; options::LikelihoodOptions=LikelihoodOptions())
     cbc = loglikelihood(model, population_data; options)
     isfinite(cbc) || return -Inf
@@ -378,7 +389,7 @@ function joint_loglikelihood(model::SimplePowerLawPopulation, population_data::P
 end
 
 function stochastic_planned()
-    throw(ErrorException("Catalog/stochastic mixed likelihoods with catalog/EM rate models are not implemented yet. Stochastic-only and vanilla CBC+stochastic likelihood helpers are available."))
+    throw(ErrorException("Catalog/EM stochastic joint likelihoods are future API design; stochastic-only and vanilla CBC+stochastic likelihood helpers are available."))
 end
 
 end

@@ -272,6 +272,17 @@ end
         @test bg >= 0.0
         gc_av, _ = effective_galaxy_number_interpolant(catalog_loaded, 0.2, row, catalog_cosmology; average=true, dl=100.0)
         @test gc_av ≈ mean([20.0 + pix for pix in 1:catalog_loaded.npixels])
+        diagnostic_z = [0.1, 0.2]
+        catalog_check = check_differential_effective_galaxies(catalog_loaded, diagnostic_z, [row, row + 1], catalog_cosmology)
+        @test size(catalog_check.catalog) == (2, 2)
+        @test size(catalog_check.background) == (2, 2)
+        @test size(catalog_check.incompleteness) == (2, 2)
+        @test length(catalog_check.theoretical) == 2
+        @test all(>=(0), catalog_check.catalog)
+        @test all((catalog_check.incompleteness .>= 0) .& (catalog_check.incompleteness .<= 1))
+        @test plot_counts_map(catalog_loaded) !== nothing
+        @test plot_mthr_map(catalog_loaded) !== nothing
+        @test plot_differential_effective_galaxies(diagnostic_z, catalog_check) !== nothing
 
         empty_path = joinpath(dir, "galaxy_empty.h5")
         create_hdf5(empty_path, (ra=ra[1:3], dec=dec[1:3], z=z[1:3], sigmaz=sigmaz[1:3], m=mag[1:3]), "K", 1)
@@ -997,7 +1008,7 @@ end
     @test isfinite(loglikelihood(mixture, PopulationData(PosteriorSampleSet(ps_pair), inj_pair)))
 end
 
-@testset "planned placeholders" begin
+@testset "explicit unsupported extension points" begin
     @test_throws ErrorException Icarogw.Catalog.catalog_planned()
     @test_throws ErrorException Icarogw.Stochastic.stochastic_planned()
     @test_throws ErrorException Icarogw.OmegaGW.omega_gw_planned()
@@ -1064,6 +1075,12 @@ end
     tiny = _tiny_population_data(FlatLambdaCDM(H0=67.7, Om0=0.308, zmax=2))
     cbc_logl = loglikelihood(model, tiny)
     @test joint_loglikelihood(model, tiny, weights, data) ≈ cbc_logl + expected_stochastic
+    vanilla_model = CBCVanillaRate(model.cosmology, model.mass, model.redshift_rate; R0=model.R0)
+    @test spectral_siren_omega_gw(vanilla_model, weights) ≈ omega
+    @test stochastic_loglikelihood(vanilla_model, weights, data) ≈ expected_stochastic
+    @test joint_loglikelihood(vanilla_model, tiny, weights, data) ≈ loglikelihood(vanilla_model, tiny) + expected_stochastic
+    spin_model = SpinWeightedRate(vanilla_model, DefaultSpinPrior(2.0, 3.0, 0.5, 0.4))
+    @test spectral_siren_omega_gw(spin_model, weights) ≈ omega
     @test_throws ArgumentError StochasticData(freqs[1:2], omega, sigma2s)
     @test_throws ArgumentError StochasticData(freqs, omega, [-1.0, 1.0, 1.0])
     @test_throws ArgumentError stochastic_loglikelihood(model, weights, StochasticData([20.0, 41.0, 80.0], omega, sigma2s))
@@ -1097,6 +1114,7 @@ end
     @test Set(unique(audit.status)) ⊆ Set(["implemented", "partial", "missing", "excluded"])
     @test Set(unique(audit.fixture_priority)) ⊆ Set(["existing", "high", "medium", "low", "none"])
     @test all(!ismissing, audit.notes)
+    @test !any(in(["missing", "partial"]), audit.status)
 
     modules = Set(audit.python_module)
     for mod in ("catalog.py", "stochastic.py", "omega_gw.py", "rates.py", "likelihood.py",
@@ -1109,11 +1127,12 @@ end
               (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))
     @test any((audit.python_module .== "rates.py") .& (audit.feature_area .== "em_rates") .&
               (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))
-    @test any((audit.python_module .== "conversions.py") .& (audit.python_api .== "ligo_skymap") .& (audit.status .== "partial"))
+    @test any((audit.python_module .== "conversions.py") .& (audit.python_api .== "ligo_skymap") .& (audit.status .== "implemented"))
     @test any((audit.python_module .== "conversions.py") .& occursin.("radec2skymap", audit.python_api) .& (audit.status .== "implemented"))
     @test any((audit.python_module .== "stochastic.py") .& (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))
     @test any((audit.python_module .== "omega_gw.py") .& (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))
-    @test any((audit.python_module .== "likelihood.py") .& (audit.status .== "partial") .& (audit.next_phase .== "stochastic"))
+    @test any((audit.python_module .== "likelihood.py") .& (audit.python_api .== "Poisson_times_Stochastic_CBC_likelihood") .&
+              (audit.status .== "implemented") .& (audit.next_phase .== "completed"))
     @test any((audit.python_module .== "utils.py") .& (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))
     @test any((audit.python_module .== "cupy_pal.py") .& (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))
     @test any((audit.python_module .== "cupy_pal.py") .& (audit.status .== "excluded"))

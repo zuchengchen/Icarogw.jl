@@ -36,7 +36,7 @@ Status meanings:
 | `extraD_astropycosmology` | `ExtraDCosmology` | implemented/renamed | Luminosity-distance wrapper. |
 | `cM_astropycosmology` | `PlanckMassCosmology` | implemented/renamed | Native integral. |
 | `alphalog_astropycosmology` | `AlphaLogCosmology` | implemented/renamed | Luminosity-distance wrapper. |
-| `galaxy_MF`, `basic_absM_rate`, `log_powerlaw_absM_rate` | `GalaxyLuminosityFunction`, `AbstractAbsMagnitudeRate`, `LogPowerLawAbsMagnitudeRate` | implemented/renamed | Dependency-light Schechter and absolute-magnitude rate formulas with fixture coverage; runtime catalog readers consume them, while preprocessing and catalog-aware rates remain separate gaps. |
+| `galaxy_MF`, `basic_absM_rate`, `log_powerlaw_absM_rate` | `GalaxyLuminosityFunction`, `AbstractAbsMagnitudeRate`, `LogPowerLawAbsMagnitudeRate` | implemented/renamed | Dependency-light Schechter and absolute-magnitude rate formulas with fixture coverage; runtime catalog readers, preprocessing, and catalog-aware rates consume them. |
 | `powerlaw_rate`, `md_rate`, `md_gamma_rate`, `beta_rate`, `beta_rate_line` | `PowerLawRate`, `MadauRate`, `MadauGammaRate`, `BetaRate`, `BetaLineRate` | implemented/renamed | Native structs. |
 
 ## conversions.py
@@ -58,7 +58,7 @@ Status meanings:
 | `joint_prior_from_isotropic_spins`, `chi_p_prior_given_chi_eff_q` | same names | implemented | RNG-explicit Monte Carlo and weighted KDE helpers. |
 | `chi_eff_from_spins`, `chi_p_from_spins`, `cartestianspins2chis` | `chi_eff_from_spins`, `chi_p_from_spins`, `cartesian_spins_to_chis` | implemented/renamed | Core spin conversions. |
 | `radec2skymap`, `radec2indeces`, `indices2radec` | same names plus `radec2indices` | implemented/renamed | Backed by `Healpix.jl`; Julia indices are 1-based by default with `zero_based=true` for Python compatibility. |
-| `ligo_skymap` | `LigoSkyMap`, `ligo_skymap` | partial | FITSIO/Healpix-backed multi-order `UNIQ` skymap reader with distance layers, 3D posterior/likelihood, and sampling; catalog/EM integration remains pending. |
+| `ligo_skymap` | `LigoSkyMap`, `ligo_skymap` | implemented | FITSIO/Healpix-backed multi-order `UNIQ` skymap reader with distance layers, 3D posterior/likelihood, sampling, posterior/injection pixelization, and low-latency EM counterpart integration. |
 
 ## priors.py and wrappers.py
 
@@ -105,7 +105,7 @@ Status meanings:
 | `CBC_vanilla_rate_pseob`, `CBC_vanilla_rate_pseob_dummy` | `SpinWeightedRate(base, PSEOBGaussianPrior)`, `PEOnlySpinWeightedRate(base, PSEOBGaussianPrior)` | implemented/merged | Standard pSEOB weighting includes pSEOB columns for PE and injections; dummy pSEOB weighting includes pSEOB columns only for PE while injection weights use the base CBC model. |
 | `CBC_catalog_vanilla_rate`, `CBC_catalog_vanilla_rate_skymap` | `CBCCatalogVanillaRate`, `CBCCatalogSkyMapRate` | implemented/renamed | Catalog-aware CBC rates consume `:sky_indices`, runtime catalog interpolants, and Python-compatible posterior/injection completeness behavior. |
 | `CBC_low_latency_skymap_EM_counterpart`, `CBC_vanilla_EM_counterpart` | `CBCLowLatencySkyMapEMCounterpartRate`, `CBCVanillaEMCounterpartRate` | implemented/renamed | Bright-siren counterpart rates use `:z_EM` posterior columns; the low-latency skymap variant also consumes `:right_ascension`, `:declination`, and per-event `LigoSkyMap`s. Vanilla EM event weights use a weighted redshift KDE, while injections use the Python-compatible GW-only selection correction. |
-| stochastic mixed rates | placeholder modules | planned | First-version exclusion. |
+| stochastic mixed catalog/EM rates | explicit error helpers | excluded | Python only implements the vanilla stochastic-spectrum likelihood path; catalog/EM stochastic model design is left as a future extension. |
 
 ## posterior_samples.py and injections.py
 
@@ -131,7 +131,7 @@ Status meanings:
 | `hierarchical_likelihood_noevents` | `no_event_loglikelihood` | implemented/renamed | Upper-limit likelihood. |
 | selection correction | `InjectionSet` + diagnostics | implemented | `xi`, `N_expected`, injection ESS. |
 | diagnostics | `LikelihoodDiagnostics` | implemented | Structured return type. |
-| stochastic likelihood classes | `StochasticData`, `read_stochastic_csv`, `read_stochastic_hdf5`, `stochastic_loglikelihood`, `joint_loglikelihood` | partial | Gaussian stochastic-only, simple stochastic CSV/HDF5 readers, and vanilla CBC+stochastic helpers are implemented; catalog/EM mixed stochastic likelihoods and richer covariance/data-product APIs remain pending. |
+| stochastic likelihood classes | `StochasticData`, `read_stochastic_csv`, `read_stochastic_hdf5`, `stochastic_loglikelihood`, `joint_loglikelihood` | implemented/renamed | Gaussian stochastic-only, simple stochastic CSV/HDF5 readers, and Poisson CBC+stochastic helpers are implemented for the Python vanilla stochastic-spectrum path. Richer collaboration-specific covariance products are future API design, not a Python formula gap. |
 
 ## simulation.py
 
@@ -157,7 +157,7 @@ Status meanings:
 | `create_pixelated_catalogs`, `clear_empty_pixelated_files`, `remove_nans_pixelated_files` | same names | implemented | Python-compatible `pixel_*.hdf5` shards, `filled_pixels.txt`, NaN masks, and zero-based stored HEALPix pixel labels are implemented for offline in-memory catalog inputs. |
 | `calculate_mthr_pixelated_files`, `get_redshift_grid_for_files`, `initialize_icarogw_catalog`, `calculate_interpolant_files` | same names plus `build_icarogw_catalog_from_pixelated_files!` | implemented | Magnitude thresholds, per-pixel redshift grids, per-pixel effective-galaxy interpolants, and aggregation into `IcarogwCatalog` HDF5 files are implemented with offline toy-HDF5 coverage. |
 | `icarogw_catalog`, `gwcosmo_catalog` | `IcarogwCatalog`, `GwcosmoCatalog` | implemented/renamed | Runtime HDF5 readers, NUNIQ/HEALPix row lookup, magnitude thresholds, effective galaxy interpolants, and `make_me_empty!` compatibility helpers. |
-| `galaxy_catalog` | `GalaxyCatalog`, `galaxy_catalog`, `create_hdf5`, `load_hdf5`, `calculate_mthr!`, `return_counts_map` | partial/renamed | Single-file HDF5 runtime compatibility is implemented for catalog columns, Python-style zero-based stored `sky_indices`, counts maps, magnitude-threshold maps including `"empty"`, and effective galaxy interpolants. Plot/check helpers and richer workflow orchestration remain outside this runtime layer. |
+| `galaxy_catalog` | `GalaxyCatalog`, `galaxy_catalog`, `create_hdf5`, `load_hdf5`, `calculate_mthr!`, `return_counts_map`, `check_differential_effective_galaxies` | implemented/renamed | Single-file HDF5 runtime compatibility is implemented for catalog columns, Python-style zero-based stored `sky_indices`, counts maps, magnitude-threshold maps including `"empty"`, effective galaxy interpolants, plot helpers, and differential effective-galaxy diagnostics. |
 | stochastic background APIs | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw`, `StochasticData`, `read_stochastic_csv`, `read_stochastic_hdf5`, `stochastic_loglikelihood` | implemented/renamed | Energy spectrum, omega weights, vanilla spectral-siren helper, Gaussian stochastic likelihood, and simple freqs/Cf/sigma2s readers are implemented. |
 | `Omega_GW` helpers | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw`, `joint_loglikelihood` | implemented/merged | Duplicate Python `stochastic.py`/`omega_gw.py` formulas are unified in Julia with a vanilla CBC+stochastic helper. |
 | `utils.check_posterior_samples_and_prior` | `check_posterior_samples_and_prior` | implemented | Non-Condor validation helper. |

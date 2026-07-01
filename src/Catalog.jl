@@ -35,6 +35,7 @@ export LegacyGalaxyLuminosityFunction,
     load_hdf5,
     calculate_mthr!,
     return_counts_map,
+    check_differential_effective_galaxies,
     galaxy_MF_dep,
     KCorrection,
     DeprecatedKCorrection,
@@ -1459,15 +1460,62 @@ function effective_galaxy_number_interpolant(c::GalaxyCatalog, z, skypos,
     return _shape_output(gc, shape), _shape_output(bg, shape)
 end
 
+function _complete_background(c::GalaxyCatalog, z, cosmology::Cosmology.AbstractCosmology)
+    c.abs_magnitude_rate === nothing &&
+        throw(ArgumentError("GalaxyCatalog requires epsilon to evaluate completeness diagnostics"))
+    return [_legacy_or_modern_background(c.luminosity_function, -Inf, zi, c.abs_magnitude_rate) *
+            Cosmology.dvc_dz_dOmega(cosmology, zi) for zi in z]
+end
+
+"""
+    check_differential_effective_galaxies(catalog, z, sky_indices, cosmology)
+
+Evaluate the catalog/background effective galaxy density and incompleteness
+diagnostic used by Python `galaxy_catalog.check_differential_effective_galaxies`.
+The return value is a named tuple with matrices `catalog`, `background`, and
+`incompleteness` of size `(length(z), length(sky_indices))`, plus the
+full-completeness theoretical background vector `theoretical`.
+"""
+function check_differential_effective_galaxies(c::GalaxyCatalog, z, sky_indices,
+    cosmology::Cosmology.AbstractCosmology)
+    zvals = Float64.(vec(collect(z)))
+    skyvals = Int.(vec(collect(sky_indices)))
+    isempty(zvals) && throw(ArgumentError("z must contain at least one value"))
+    isempty(skyvals) && throw(ArgumentError("sky_indices must contain at least one value"))
+    c.mthr_empty && throw(ArgumentError("GalaxyCatalog has an empty magnitude-threshold map"))
+    c.mthr_map === nothing && throw(ArgumentError("GalaxyCatalog does not contain a magnitude-threshold map"))
+    c.abs_magnitude_rate === nothing &&
+        throw(ArgumentError("GalaxyCatalog requires epsilon to evaluate completeness diagnostics"))
+    !isempty(c.z_grid) || throw(ArgumentError("GalaxyCatalog does not contain a dNgal_dzdOm_interpolant group"))
+
+    gcp = Matrix{Float64}(undef, length(zvals), length(skyvals))
+    bgp = similar(gcp)
+    incompleteness = similar(gcp)
+    complete_bg = _complete_background(c, zvals, cosmology)
+    for (j, skypos) in pairs(skyvals)
+        gc, bg = effective_galaxy_number_interpolant(c, zvals, skypos, cosmology)
+        gcp[:, j] = vec(collect(gc))
+        bgp[:, j] = vec(collect(bg))
+        mthr = Float64.(vec(collect(calc_mthr(c, zvals, skypos, cosmology))))
+        for i in eachindex(zvals)
+            mthr_i = zvals[i] > last(c.z_grid) ? -Inf : mthr[i]
+            partial_bg = _legacy_or_modern_background(c.luminosity_function, mthr_i, zvals[i], c.abs_magnitude_rate)
+            full_bg = _legacy_or_modern_background(c.luminosity_function, -Inf, zvals[i], c.abs_magnitude_rate)
+            incompleteness[i, j] = full_bg > 0 ? partial_bg / full_bg : 0.0
+        end
+    end
+    return (catalog=gcp, background=bgp, incompleteness=incompleteness, theoretical=complete_bg)
+end
+
 """
     catalog_planned()
 
-Higher-level galaxy catalog, dark-siren, and bright-siren workflows are still
-planned beyond the runtime catalog readers. This placeholder exists so users
-get an explicit error instead of a silent partial implementation.
+Compatibility error for distributed catalog orchestration that is outside the
+Julia package runtime. Runtime catalog readers, catalog-aware rates, and EM
+counterpart rates are implemented.
 """
 function catalog_planned()
-    throw(ErrorException("Higher-level catalog and EM-counterpart workflows are planned beyond the runtime catalog readers."))
+    throw(ErrorException("Distributed catalog orchestration is outside the package runtime; catalog readers, catalog-aware rates, and EM counterpart rates are available."))
 end
 
 end

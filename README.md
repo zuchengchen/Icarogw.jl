@@ -93,12 +93,13 @@ and [docs/migration_notes.md](docs/migration_notes.md) for design differences.
 - pickle
 - Python GPU backend switching and `cupy_pal.py`
 - CUDA/GPU backends
-- full galaxy catalog / dark siren / bright siren workflow
-- stochastic background / `Omega_GW`
-- stochastic/catalog/EM-counterpart mixed likelihoods
+- distributed catalog job orchestration
+- collaboration-specific stochastic covariance/data-product APIs
+- catalog/EM stochastic joint likelihoods beyond the Python vanilla
+  stochastic-spectrum path
 
-Catalog, stochastic, and `Omega_GW` modules are explicit planned placeholders
-that throw clear errors.
+The package exposes explicit error helpers for these excluded or future
+extension points so unsupported workflows fail loudly.
 
 ## Development
 
