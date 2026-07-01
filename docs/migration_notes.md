@@ -75,8 +75,9 @@ where the Python incomplete-gamma branch can return `NaN`.
 
 Catalog formula helpers that are independent of pixelated catalog files are
 also native Julia. `KCorrection` and `DeprecatedKCorrection` cover Python
-`kcorr` and `kcorr_dep`; `em_likelihood_prior_differential_volume` covers the
-EM redshift likelihood-prior helper for `uniform`, `gaussian`, and
+`kcorr` and `kcorr_dep`; `LegacyGalaxyLuminosityFunction` covers Python
+`galaxy_MF_dep`; `em_likelihood_prior_differential_volume` covers the EM
+redshift likelihood-prior helper for `uniform`, `gaussian`, and
 `gaussian_nocom` modes. Full catalog/skymap workflows still require a
 FITS/HEALPix/NUNIQ dependency and API decision.
 

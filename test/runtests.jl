@@ -125,6 +125,26 @@ end
             toy_catalog_cosmology; Numsigma=first(rows.Numsigma), ptype=ptype) ≈ rows.value rtol=4e-10 atol=1e-12
     end
 
+    legacy_ref = CSV.File(joinpath(refdir, "reference_catalog_legacy_luminosity.csv")) |> DataFrame
+    legacy_lf = LegacyGalaxyLuminosityFunction(first(legacy_ref.band);
+        cosmology=FlatLambdaCDM(H0=100 * first(legacy_ref.little_h)),
+        epsilon=first(legacy_ref.epsilon))
+    @test galaxy_MF_dep === LegacyGalaxyLuminosityFunction
+    @test legacy_lf.Mminobs ≈ first(legacy_ref.Mminobs) rtol=2e-14
+    @test legacy_lf.Mmaxobs ≈ first(legacy_ref.Mmaxobs) rtol=2e-14
+    @test legacy_lf.Mstarobs ≈ first(legacy_ref.Mstarobs) rtol=2e-14
+    @test legacy_lf.phistarobs ≈ first(legacy_ref.phistarobs) rtol=2e-14
+    @test legacy_lf.norm ≈ first(legacy_ref.norm) rtol=2e-10
+    @test log_luminosity_function(legacy_lf, legacy_ref.M_abs) ≈ legacy_ref.log_luminosity_function rtol=2e-14
+    @test luminosity_function(legacy_lf, legacy_ref.M_abs) ≈ legacy_ref.luminosity_function rtol=2e-14
+    @test log_luminosity_pdf(legacy_lf, legacy_ref.M_abs) ≈ legacy_ref.log_luminosity_pdf rtol=2e-14
+    @test luminosity_pdf(legacy_lf, legacy_ref.M_abs) ≈ legacy_ref.luminosity_pdf rtol=2e-14
+    @test background_effective_galaxy_density(legacy_lf, legacy_ref.Mthr) ≈
+          legacy_ref.background_effective_density rtol=2e-10 atol=1e-12
+    @test length(sample_luminosity_function(MersenneTwister(5), legacy_lf, 3)) == 3
+    @test_throws ArgumentError LegacyGalaxyLuminosityFunction("bad-band")
+    @test_throws ArgumentError background_effective_galaxy_density(LegacyGalaxyLuminosityFunction("K"), -22.0)
+
     conv_ref = only(CSV.File(joinpath(refdir, "reference_conversions_core.csv")) |> DataFrame |> eachrow)
     @test chirp_mass(conv_ref.m1, conv_ref.m2) ≈ conv_ref.chirp_mass rtol=1e-14
     @test mass_ratio(conv_ref.m1, conv_ref.m2) ≈ conv_ref.mass_ratio rtol=1e-14

@@ -148,6 +148,7 @@ Status meanings:
 | Python API | Julia API | Status | Notes |
 | --- | --- | --- | --- |
 | `kcorr`, `kcorr_dep` | `KCorrection`, `DeprecatedKCorrection` | implemented/renamed | Modern and legacy dependency-light K-correction formulas with Python fixture coverage. |
+| `galaxy_MF_dep` | `LegacyGalaxyLuminosityFunction`, `galaxy_MF_dep` | implemented/renamed | Legacy W1/K/bJ Schechter helper with Python fixture coverage; `GalaxyLuminosityFunction` remains preferred for new code. |
 | `EM_likelihood_prior_differential_volume` | `em_likelihood_prior_differential_volume`, `EM_likelihood_prior_differential_volume` | implemented/renamed | Uniform, gaussian, and gaussian-without-comoving-volume redshift helper with fixture coverage. |
 | galaxy catalog / EM counterpart runtime APIs | `Catalog.catalog_planned` | planned | Pixelated catalog, skymap, and counterpart workflows still require catalog/skymap dependency decisions. |
 | stochastic background APIs | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw`, `StochasticData`, `stochastic_loglikelihood` | partial | Energy spectrum, omega weights, vanilla spectral-siren helper, and Gaussian stochastic likelihood are implemented; full covariance/data-product readers remain pending. |

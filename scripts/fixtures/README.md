@@ -41,8 +41,9 @@ the Python reference checkout.
   absolute-magnitude rate formulas from `cosmology.py`; it does not load
   catalog/skymap files or optional HEALPix dependencies.
 - `catalog-formulas-smoke`: dependency-light K-correction and EM redshift
-  likelihood-prior formulas from `catalog.py`; it stubs optional HDF5/HEALPix
-  imports and does not exercise catalog file workflows.
+  likelihood-prior formulas plus legacy `galaxy_MF_dep` values from
+  `catalog.py`; it stubs optional HDF5/HEALPix imports and does not exercise
+  catalog file workflows.
 - `all-small`: all currently implemented small suites.
 
 Generated files use the prefix `generated_reference_`. Review them before

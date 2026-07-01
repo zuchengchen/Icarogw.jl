@@ -829,6 +829,9 @@ def generate_catalog_formulas_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
     catalog = _load_lightweight_catalog_module()
     np = catalog.np
 
+    class _LittleHCosmologyProxy:
+        little_h = 0.677
+
     z = np.array([0.01, 0.08, 0.20, 0.35])
     k0 = np.array([0.10, 0.15, 0.20, 0.25])
     dkbydz = np.array([1.0, -0.5, 0.25, 0.75])
@@ -888,7 +891,65 @@ def generate_catalog_formulas_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
     em_path = outdir / "generated_reference_catalog_em.csv"
     _write_rows(em_path, ("ptype", "i", "z", "zobs", "sigmaz", "Numsigma", "value", "normal_pdf"), em_rows)
 
-    return [kcorr_path, em_path]
+    legacy = catalog.galaxy_MF_dep(band="K")
+    legacy.build_MF(_LittleHCosmologyProxy())
+    epsilon = 0.8
+    legacy.build_effective_number_density_interpolant(epsilon)
+    magnitudes = np.array([-28.0, -24.0, -22.0, -18.0])
+    thresholds = np.array([-28.0, -26.0, -22.0, -18.0])
+    log_eval = legacy.log_evaluate(magnitudes.copy())
+    evals = legacy.evaluate(magnitudes.copy())
+    log_pdf = legacy.log_pdf(magnitudes.copy())
+    pdfs = legacy.pdf(magnitudes.copy())
+    background = legacy.background_effective_galaxy_density(thresholds.copy())
+    legacy_rows = []
+    for i in range(len(magnitudes)):
+        legacy_rows.append(
+            {
+                "i": i + 1,
+                "band": "K",
+                "little_h": _LittleHCosmologyProxy.little_h,
+                "epsilon": epsilon,
+                "M_abs": magnitudes[i],
+                "Mthr": thresholds[i],
+                "Mminobs": legacy.Mminobs,
+                "Mmaxobs": legacy.Mmaxobs,
+                "Mstarobs": legacy.Mstarobs,
+                "phistarobs": legacy.phistarobs,
+                "norm": legacy.norm,
+                "log_luminosity_function": log_eval[i],
+                "luminosity_function": evals[i],
+                "log_luminosity_pdf": log_pdf[i],
+                "luminosity_pdf": pdfs[i],
+                "background_effective_density": background[i],
+            }
+        )
+
+    legacy_path = outdir / "generated_reference_catalog_legacy_luminosity.csv"
+    _write_rows(
+        legacy_path,
+        (
+            "i",
+            "band",
+            "little_h",
+            "epsilon",
+            "M_abs",
+            "Mthr",
+            "Mminobs",
+            "Mmaxobs",
+            "Mstarobs",
+            "phistarobs",
+            "norm",
+            "log_luminosity_function",
+            "luminosity_function",
+            "log_luminosity_pdf",
+            "luminosity_pdf",
+            "background_effective_density",
+        ),
+        legacy_rows,
+    )
+
+    return [kcorr_path, em_path, legacy_path]
 
 
 def not_yet_available(name: str) -> None:
