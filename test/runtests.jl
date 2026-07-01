@@ -283,6 +283,49 @@ end
         @test gc_empty == 0.0
         @test bg_empty > 0.0
     end
+
+    mktempdir() do dir
+        cosmo = FlatLambdaCDM(zmax=1.0)
+        ra = [0.2, 1.0, 1.1, 2.0, 0.4]
+        dec = [0.1, -0.1, -0.12, 0.3, 0.2]
+        z = [0.1, 0.2, 0.22, 0.3, NaN]
+        sigmaz = [0.01, 0.02, 0.03, 0.02, 0.01]
+        kmag = [12.0, 13.0, 14.0, 15.0, 16.0]
+        create_pixelated_catalogs(dir, 1, (ra=ra, dec=dec, z=z, sigmaz=sigmaz, Kmag=kmag))
+        filled = clear_empty_pixelated_files(dir, 1)
+        @test !isempty(filled)
+        @test sort(filled) == sort(unique(radec2indeces(ra, dec, 1; zero_based=true)))
+        @test isfile(joinpath(dir, "filled_pixels.txt"))
+
+        zfixed = [1e-6, 0.1, 0.2, 0.4]
+        for pixel in filled
+            remove_nans_pixelated_files(dir, pixel, ["z", "sigmaz", "Kmag"], "K")
+            calculate_mthr_pixelated_files(dir, pixel, "Kmag", "K", 1; mthr_percentile=80)
+            get_redshift_grid_for_files(dir, pixel, "K", cosmo; Nintegration=zfixed, zcut=last(zfixed))
+            calculate_interpolant_files(dir, zfixed, pixel, "K", "weighted", "K-glade+", cosmo, 0.8)
+            h5open(joinpath(dir, "pixel_$pixel.hdf5"), "r") do h
+                group = h["K"]
+                @test Bool(attrs(group)["NaNs_removed"])
+                @test Bool(attrs(group)["mthr_calculated"])
+                @test Bool(attrs(group)["z_grid_calculated"])
+                @test Bool(attrs(group["weighted"])["interpolant_calculated"])
+                @test length(read(group, "not_NaN_indices")) == length(read(h["catalog"], "z"))
+                @test length(read(group["weighted"], "vals_interpolant")) == length(zfixed)
+            end
+        end
+
+        outfile = joinpath(dir, "icarogw_from_pixels.h5")
+        initialize_icarogw_catalog(dir, outfile, "K")
+        built = build_icarogw_catalog_from_pixelated_files!(dir, outfile, "K", "weighted"; cosmology=cosmo)
+        loaded = IcarogwCatalog(outfile, "K", "weighted"; cosmology=cosmo)
+        @test built.band == "K-glade+"
+        @test loaded.epsilon == 0.8
+        @test loaded.z_grid == zfixed
+        @test size(loaded.dNgal_dzdOm_vals) == (length(zfixed), 12)
+        @test all(loaded.dNgal_dzdOm_vals .>= 0.0)
+        @test all(loaded.bg_vals_av .>= 0.0)
+        @test isfile(joinpath(dir, "K_common_zgrid.txt"))
+    end
 end
 
 @testset "reference fixtures" begin
@@ -1017,7 +1060,10 @@ end
         @test mod in modules
     end
 
-    @test any((audit.python_module .== "catalog.py") .& (audit.status .== "missing") .& (audit.fixture_priority .== "high"))
+    @test any((audit.python_module .== "catalog.py") .& (audit.feature_area .== "catalog_preprocessing") .&
+              (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))
+    @test any((audit.python_module .== "rates.py") .& (audit.feature_area .== "em_rates") .&
+              (audit.status .== "missing") .& (audit.fixture_priority .== "high"))
     @test any((audit.python_module .== "conversions.py") .& (audit.python_api .== "ligo_skymap") .& (audit.status .== "partial"))
     @test any((audit.python_module .== "conversions.py") .& occursin.("radec2skymap", audit.python_api) .& (audit.status .== "implemented"))
     @test any((audit.python_module .== "stochastic.py") .& (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))

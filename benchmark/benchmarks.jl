@@ -105,6 +105,30 @@ display(@benchmark GalaxyCatalog($galaxy_path; cosmology=$catalog_cosmology, eps
 display(@benchmark return_counts_map($galaxy_runtime))
 display(@benchmark effective_galaxy_number_interpolant($galaxy_runtime, $catalog_z, $galaxy_rows, $catalog_cosmology; average=true))
 
+pixel_dir = mktempdir()
+pixel_data = (ra=collect(range(0.0, 2pi; length=24)),
+    dec=collect(range(-0.8, 0.8; length=24)),
+    z=collect(range(0.04, 0.28; length=24)),
+    sigmaz=fill(0.01, 24),
+    Kmag=collect(range(12.0, 15.0; length=24)))
+pixel_zgrid = collect(range(1e-6, 0.35; length=8))
+
+println("pixelated catalog preprocessing")
+display(@benchmark begin
+    dir = mktempdir()
+    create_pixelated_catalogs(dir, 1, $pixel_data)
+    filled = clear_empty_pixelated_files(dir, 1)
+    for pixel in filled
+        remove_nans_pixelated_files(dir, pixel, ["z", "sigmaz", "Kmag"], "K")
+        calculate_mthr_pixelated_files(dir, pixel, "Kmag", "K", 1; mthr_percentile=75)
+        get_redshift_grid_for_files(dir, pixel, "K", $catalog_cosmology; Nintegration=$pixel_zgrid, zcut=last($pixel_zgrid))
+        calculate_interpolant_files(dir, $pixel_zgrid, pixel, "K", "weighted", "K-glade+", $catalog_cosmology, 0.8)
+    end
+    out = joinpath(dir, "catalog.h5")
+    initialize_icarogw_catalog(dir, out, "K")
+    build_icarogw_catalog_from_pixelated_files!(dir, out, "K", "weighted"; cosmology=$catalog_cosmology)
+end)
+
 ra = collect(range(0.0, 2pi; length=64))
 dec = collect(range(-1.0, 1.0; length=64))
 skymap_nside = 4

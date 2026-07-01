@@ -88,8 +88,18 @@ group with Python-style zero-based stored `sky_indices`; the Julia reader
 converts those pixels to 1-based rows internally. `calculate_mthr!`,
 `return_counts_map`, `calc_mthr`, and `effective_galaxy_number_interpolant`
 cover the runtime threshold-map, empty-catalog, and effective-count paths.
-Long-running pixelated catalog preprocessing builders and EM counterpart
-rate/likelihood integration remain open catalog workflow gaps.
+
+Pixelated catalog preprocessing is available as file-level Julia helpers:
+`create_pixelated_catalogs`, `clear_empty_pixelated_files`,
+`remove_nans_pixelated_files`, `calculate_mthr_pixelated_files`,
+`get_redshift_grid_for_files`, `initialize_icarogw_catalog`, and
+`calculate_interpolant_files`. They write Python-style `pixel_*.hdf5` shards,
+filled-pixel lists, NaN masks, magnitude thresholds, redshift grids, and
+per-pixel effective-galaxy interpolants. The Julia-only
+`build_icarogw_catalog_from_pixelated_files!` helper then aggregates those
+shards into the single HDF5 layout consumed by `IcarogwCatalog`.
+Large-scale job orchestration and EM counterpart rate/likelihood integration
+remain open catalog workflow gaps.
 
 ## Model Composition
 

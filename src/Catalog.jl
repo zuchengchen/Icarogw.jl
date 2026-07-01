@@ -2,7 +2,7 @@ module Catalog
 
 using ..Cosmology
 using ..Conversions
-using ..SkyMaps: MOCMap, indices2radec, radec2indeces
+using ..SkyMaps: MOCMap, healpix_nside_to_level, indices2radec, level_ipix_to_uniq, radec2indeces
 using HDF5
 using QuadGK
 using Random
@@ -23,6 +23,14 @@ export LegacyGalaxyLuminosityFunction,
     icarogw_catalog,
     gwcosmo_catalog,
     galaxy_catalog,
+    create_pixelated_catalogs,
+    clear_empty_pixelated_files,
+    remove_nans_pixelated_files,
+    calculate_mthr_pixelated_files,
+    get_redshift_grid_for_files,
+    initialize_icarogw_catalog,
+    calculate_interpolant_files,
+    build_icarogw_catalog_from_pixelated_files!,
     create_hdf5,
     load_hdf5,
     calculate_mthr!,
@@ -659,6 +667,523 @@ function make_me_empty!(c::GwcosmoCatalog)
         c.dNgal_dzdOm_vals[:, j] .= c.pz_empty
     end
     return c
+end
+
+function _pixel_file(outfolder::AbstractString, pixel::Integer)
+    return joinpath(outfolder, "pixel_$(Int(pixel)).hdf5")
+end
+
+function _ensure_group(parent, name::AbstractString)
+    return haskey(parent, name) ? parent[name] : create_group(parent, name)
+end
+
+function _replace_dataset(group, name::AbstractString, data)
+    haskey(group, name) && delete_object(group, name)
+    writable = data isa BitVector ? collect(data) : data
+    write(group, name, writable)
+    return group[name]
+end
+
+function _bool_attr(attrs_obj, name::AbstractString, default::Bool=false)
+    return haskey(attrs_obj, name) ? Bool(attrs_obj[name]) : default
+end
+
+function _catalog_keys(cat_data)
+    if cat_data isa AbstractDict
+        return collect(keys(cat_data))
+    else
+        return collect(propertynames(cat_data))
+    end
+end
+
+function _as_key_strings(keys)
+    return String.(collect(keys))
+end
+
+function _catalog_column_by_name(cat_data, name::AbstractString)
+    if cat_data isa AbstractDict
+        haskey(cat_data, name) && return cat_data[name]
+        sym = Symbol(name)
+        haskey(cat_data, sym) && return cat_data[sym]
+    else
+        sym = Symbol(name)
+        hasproperty(cat_data, sym) && return getproperty(cat_data, sym)
+    end
+    throw(ArgumentError("catalog data is missing column $name"))
+end
+
+function _write_int_lines(path::AbstractString, values)
+    open(path, "w") do io
+        for value in values
+            println(io, Int(value))
+        end
+    end
+    return path
+end
+
+function _read_int_lines(path::AbstractString)
+    isfile(path) || throw(ArgumentError("required pixel list file does not exist: $path"))
+    values = Int[]
+    for line in readlines(path)
+        stripped = strip(line)
+        isempty(stripped) && continue
+        push!(values, parse(Int, stripped))
+    end
+    return values
+end
+
+function _read_filled_pixels(outfolder::AbstractString)
+    return _read_int_lines(joinpath(outfolder, "filled_pixels.txt"))
+end
+
+function _pixel_attrs(path::AbstractString)
+    h5open(path, "r") do h
+        a = attrs(h)
+        return Int(a["nside"]), Bool(a["nest"]), Float64(a["dOmega_sterad"]), Float64(a["dOmega_deg2"])
+    end
+end
+
+"""
+    create_pixelated_catalogs(outfolder, nside, groups_dict, fields_to_take=nothing; batch=100000, nest=false)
+
+Create Python-compatible `pixel_*.hdf5` catalog shards from in-memory catalog
+columns. Stored pixel labels are Python/healpy zero-based; Julia runtime readers
+convert to 1-based rows at API boundaries.
+"""
+function create_pixelated_catalogs(outfolder::AbstractString, nside::Integer, groups_dict,
+    fields_to_take=nothing; batch::Integer=100000, nest::Bool=false)
+    batch > 0 || throw(ArgumentError("batch must be positive"))
+    mkpath(outfolder)
+    keys_all = _as_key_strings(_catalog_keys(groups_dict))
+    selected = fields_to_take === nothing ? keys_all : _as_key_strings(fields_to_take)
+    "ra" in keys_all && "dec" in keys_all || throw(ArgumentError("groups_dict must contain ra and dec columns"))
+    for key in selected
+        key in keys_all || throw(ArgumentError("field $key is not present in groups_dict"))
+    end
+
+    columns = Dict{String,Any}(key => collect(_catalog_column_by_name(groups_dict, key)) for key in keys_all)
+    n = length(columns["ra"])
+    for key in keys_all
+        length(columns[key]) == n || throw(ArgumentError("catalog column $key has length $(length(columns[key])); expected $n"))
+    end
+    npixels = 12 * Int(nside)^2
+    pix = radec2indeces(Float64.(columns["ra"]), Float64.(columns["dec"]), nside; nest, zero_based=true)
+    dOmega_sterad = 4pi / npixels
+    dOmega_deg2 = dOmega_sterad * (180 / pi)^2
+    first_write = Set(selected) == Set(keys_all)
+
+    for pixel in 0:(npixels - 1)
+        path = _pixel_file(outfolder, pixel)
+        idx = findall(==(pixel), pix)
+        h5open(path, isfile(path) ? "r+" : "w") do h
+            cat = _ensure_group(h, "catalog")
+            attrs(h)["nside"] = Int(nside)
+            attrs(h)["nest"] = nest
+            attrs(h)["dOmega_sterad"] = dOmega_sterad
+            attrs(h)["dOmega_deg2"] = dOmega_deg2
+            if !haskey(attrs(h), "Ntotal_galaxies_original")
+                attrs(h)["Ntotal_galaxies_original"] = 0
+            end
+            if first_write
+                attrs(h)["Ntotal_galaxies_original"] = Int(attrs(h)["Ntotal_galaxies_original"]) + length(idx)
+            end
+            for key in keys_all
+                if !haskey(cat, key)
+                    empty = columns[key][1:0]
+                    write(cat, key, empty)
+                end
+            end
+            for key in selected
+                existing = read(cat, key)
+                _replace_dataset(cat, key, vcat(existing, columns[key][idx]))
+            end
+        end
+    end
+    _write_int_lines(joinpath(outfolder, "checkpoint_creation.txt"), [0])
+    return outfolder
+end
+
+"""
+    clear_empty_pixelated_files(outfolder, nside)
+
+Remove empty Python-style pixel files and write `filled_pixels.txt` with the
+remaining zero-based pixel labels.
+"""
+function clear_empty_pixelated_files(outfolder::AbstractString, nside::Integer)
+    filled = Int[]
+    for pixel in 0:(12 * Int(nside)^2 - 1)
+        path = _pixel_file(outfolder, pixel)
+        isfile(path) || continue
+        keep = h5open(path, "r") do h
+            Int(attrs(h)["Ntotal_galaxies_original"]) != 0
+        end
+        if keep
+            push!(filled, pixel)
+        else
+            rm(path; force=true)
+        end
+    end
+    _write_int_lines(joinpath(outfolder, "filled_pixels.txt"), filled)
+    return filled
+end
+
+"""
+    remove_nans_pixelated_files(outfolder, pixel, fields_to_take, grouping)
+
+Create or update `/<grouping>/not_NaN_indices` for one pixel file.
+"""
+function remove_nans_pixelated_files(outfolder::AbstractString, pixel::Integer, fields_to_take, grouping::AbstractString)
+    path = _pixel_file(outfolder, pixel)
+    h5open(path, "r+") do h
+        group = _ensure_group(h, grouping)
+        gattrs = attrs(group)
+        if !_bool_attr(gattrs, "NaNs_removed")
+            fields = _as_key_strings(fields_to_take)
+            n = isempty(fields) ? 0 : length(read(h["catalog"], first(fields)))
+            keep = trues(n)
+            for key in fields
+                keep .&= isfinite.(Float64.(read(h["catalog"], key)))
+            end
+            _replace_dataset(group, "not_NaN_indices", keep)
+            gattrs["NaNs_removed"] = true
+        end
+    end
+    return path
+end
+
+"""
+    calculate_mthr_pixelated_files(outfolder, pixel, apparent_magnitude_flag, grouping, nside_mthr; mthr_percentile=50)
+
+Calculate and store a Python-compatible apparent-magnitude threshold for one
+pixelated catalog shard.
+"""
+function calculate_mthr_pixelated_files(outfolder::AbstractString, pixel::Integer,
+    apparent_magnitude_flag::AbstractString, grouping::AbstractString, nside_mthr::Integer; mthr_percentile=50)
+    filled_pixels = _read_filled_pixels(outfolder)
+    path = _pixel_file(outfolder, pixel)
+    nside, nest, _, _ = _pixel_attrs(path)
+    h5open(path, "r+") do h
+        group = _ensure_group(h, grouping)
+        gattrs = attrs(group)
+        gattrs["apparent_magnitude_flag"] = String(apparent_magnitude_flag)
+        if !_bool_attr(gattrs, "mthr_calculated")
+            ra_center, dec_center = indices2radec(Int(pixel), nside; nest, zero_based=true)
+            big = radec2indeces(ra_center, dec_center, nside_mthr; nest, zero_based=true)
+            ra_filled, dec_filled = indices2radec(filled_pixels, nside; nest, zero_based=true)
+            big_filled = radec2indeces(ra_filled, dec_filled, nside_mthr; nest, zero_based=true)
+            related = filled_pixels[big_filled .== big]
+            values = Float64[]
+            for other in related
+                other_path = _pixel_file(outfolder, other)
+                h5open(other_path, "r") do oh
+                    og = oh[grouping]
+                    keep = Bool.(read(og, "not_NaN_indices"))
+                    append!(values, Float64.(read(oh["catalog"], apparent_magnitude_flag)[keep]))
+                end
+            end
+            mthr = isempty(values) ? -Inf : _percentile(sort(values), float(mthr_percentile))
+            gattrs["mthr_percentile"] = float(mthr_percentile)
+            gattrs["nside_mthr"] = Int(nside_mthr)
+            gattrs["mthr"] = mthr
+            bright = Float64.(read(h["catalog"], apparent_magnitude_flag)) .<= mthr
+            _replace_dataset(group, "brigther_than_mthr", bright)
+            gattrs["mthr_calculated"] = true
+        end
+    end
+    return path
+end
+
+function _replace_valid_galaxies!(group, valid)
+    _replace_dataset(group, "valid_galaxies_interpolant", valid)
+    return valid
+end
+
+function _sorted_unique_with_resolution(z_grid::Vector{Float64}, resolution_grid::Vector{Float64})
+    order = sortperm(z_grid)
+    z_sorted = z_grid[order]
+    r_sorted = resolution_grid[order]
+    keep = trues(length(z_sorted))
+    for i in 2:length(z_sorted)
+        if z_sorted[i] == z_sorted[i - 1]
+            keep[i] = false
+        end
+    end
+    return z_sorted[keep], r_sorted[keep]
+end
+
+"""
+    get_redshift_grid_for_files(outfolder, pixel, grouping, cosmology; Nintegration=10, Numsigma=3, zcut=nothing)
+
+Create the per-pixel redshift grid and `valid_galaxies_interpolant` mask used
+by catalog interpolation builders.
+"""
+function get_redshift_grid_for_files(outfolder::AbstractString, pixel::Integer, grouping::AbstractString,
+    cosmo_ref::Cosmology.AbstractCosmology; Nintegration=10, Numsigma::Real=3, zcut=nothing)
+    zcutv = zcut === nothing ? _cosmology_zmax(cosmo_ref) : float(zcut)
+    path = _pixel_file(outfolder, pixel)
+    h5open(path, "r+") do h
+        group = _ensure_group(h, grouping)
+        gattrs = attrs(group)
+        gattrs["Numsigma"] = float(Numsigma)
+        gattrs["zcut"] = zcutv
+        if !_bool_attr(gattrs, "z_grid_calculated")
+            zobs = Float64.(read(h["catalog"], "z"))
+            sigmaz = Float64.(read(h["catalog"], "sigmaz"))
+            bright = Bool.(read(group, "brigther_than_mthr"))
+            finite = Bool.(read(group, "not_NaN_indices"))
+            if Nintegration isa AbstractVector
+                z_grid = Float64.(collect(Nintegration))
+                abs(zcutv - maximum(z_grid)) < 1e-4 || throw(ArgumentError("maximum fixed redshift grid value must match zcut"))
+                zmin = max.(zobs .- Numsigma .* sigmaz, minimum(z_grid))
+                zmax = min.(zobs .+ Numsigma .* sigmaz, zcutv)
+                valid = (zmax .> zmin) .& (zmax .< _cosmology_zmax(cosmo_ref)) .& bright .& finite
+                gattrs["Nintegration"] = "fixed-array"
+                _replace_valid_galaxies!(group, valid)
+                _replace_dataset(group, "z_grid", z_grid)
+            else
+                nint = Int(Nintegration)
+                nint > 0 || throw(ArgumentError("Nintegration must be positive"))
+                z_grid = collect(range(1e-6, zcutv; length=nint))
+                resolution_grid = fill((zcutv - 1e-6) / nint, nint)
+                zmin = max.(zobs .- Numsigma .* sigmaz, 1e-6)
+                zmax = min.(zobs .+ Numsigma .* sigmaz, zcutv)
+                resolutions = (zmax .- zmin) ./ nint
+                valid = (zmax .> zmin) .& (zmax .< _cosmology_zmax(cosmo_ref)) .& bright .& finite
+                gattrs["Nintegration"] = nint
+                _replace_valid_galaxies!(group, valid)
+                for i in reverse(sortperm(resolutions))
+                    valid[i] || continue
+                    keep = .!((z_grid .> zmin[i]) .& (z_grid .< zmax[i]))
+                    z_grid = z_grid[keep]
+                    resolution_grid = resolution_grid[keep]
+                    z_integrator = collect(range(zmin[i], zmax[i]; length=nint))
+                    append!(z_grid, z_integrator)
+                    append!(resolution_grid, fill(resolutions[i] / nint, nint))
+                    z_grid, resolution_grid = _sorted_unique_with_resolution(z_grid, resolution_grid)
+                end
+                _replace_dataset(group, "resolution_grid", resolution_grid)
+                _replace_dataset(group, "z_grid", z_grid)
+            end
+            gattrs["z_grid_calculated"] = true
+        end
+    end
+    return path
+end
+
+function _moc_row_for_pixel(pixel::Integer, nside::Integer, nest::Bool)
+    ra, dec = indices2radec(Int(pixel), nside; nest, zero_based=true)
+    return radec2indeces(ra, dec, nside; nest=true)
+end
+
+function _prune_resolution_grid(z_grid::Vector{Float64}, resolution_grid::Vector{Float64})
+    length(z_grid) <= 2 && return z_grid, resolution_grid
+    remove = falses(length(z_grid))
+    for i in 2:(length(z_grid) - 1)
+        if resolution_grid[i] >= resolution_grid[i + 1] && resolution_grid[i] >= resolution_grid[i - 1]
+            remove[i] = true
+        end
+    end
+    return z_grid[.!remove], resolution_grid[.!remove]
+end
+
+"""
+    initialize_icarogw_catalog(outfolder, outfile, grouping)
+
+Build the common redshift grid and MOC magnitude-threshold datasets consumed by
+`IcarogwCatalog` from Python-style pixelated files.
+"""
+function initialize_icarogw_catalog(outfolder::AbstractString, outfile::AbstractString, grouping::AbstractString)
+    filled_pixels = _read_filled_pixels(outfolder)
+    !isempty(filled_pixels) || throw(ArgumentError("filled_pixels.txt does not contain any pixels"))
+    first_path = _pixel_file(outfolder, first(filled_pixels))
+    nside, nest, dOmega_sterad, dOmega_deg2 = _pixel_attrs(first_path)
+    first_attrs = h5open(first_path, "r") do h
+        attrs(h[grouping])["Nintegration"], Float64(attrs(h[grouping])["zcut"])
+    end
+    nintegration, zcut = first_attrs
+    actual_filled = Int[]
+    mthr_values = Float64[]
+    z_grid = Float64[]
+    resolution_grid = Float64[]
+
+    if !(nintegration isa Number)
+        for pixel in filled_pixels
+            h5open(_pixel_file(outfolder, pixel), "r") do h
+                group = h[grouping]
+                valid = Bool.(read(group, "valid_galaxies_interpolant"))
+                if any(valid) && isfinite(Float64(attrs(group)["mthr"]))
+                    isempty(z_grid) && (z_grid = Float64.(read(group, "z_grid")))
+                    push!(actual_filled, pixel)
+                    push!(mthr_values, Float64(attrs(group)["mthr"]))
+                end
+            end
+        end
+    else
+        nint = Int(nintegration)
+        z_grid = collect(range(1e-6, zcut; length=nint))
+        resolution_grid = fill((zcut - 1e-6) / nint, nint)
+        for pixel in filled_pixels
+            h5open(_pixel_file(outfolder, pixel), "r") do h
+                group = h[grouping]
+                append!(z_grid, Float64.(read(group, "z_grid")))
+                append!(resolution_grid, Float64.(read(group, "resolution_grid")))
+                z_grid, resolution_grid = _sorted_unique_with_resolution(z_grid, resolution_grid)
+                z_grid, resolution_grid = _prune_resolution_grid(z_grid, resolution_grid)
+                if isfinite(Float64(attrs(group)["mthr"]))
+                    push!(actual_filled, pixel)
+                    push!(mthr_values, Float64(attrs(group)["mthr"]))
+                end
+            end
+        end
+    end
+
+    npixels = 12 * nside^2
+    level = healpix_nside_to_level(nside)
+    uniq = [level_ipix_to_uniq(level, ipix) for ipix in 0:(npixels - 1)]
+    mthr_map = fill(-Inf, npixels)
+    mapping = Vector{Int}(undef, length(actual_filled))
+    for (i, pixel) in pairs(actual_filled)
+        row = _moc_row_for_pixel(pixel, nside, nest)
+        mthr_map[row] = mthr_values[i]
+        mapping[i] = row - 1
+    end
+
+    h5open(outfile, isfile(outfile) ? "r+" : "w") do h
+        attrs(h)["nside"] = nside
+        attrs(h)["nest"] = nest
+        attrs(h)["dOmega_sterad"] = dOmega_sterad
+        attrs(h)["dOmega_deg2"] = dOmega_deg2
+        group = _ensure_group(h, grouping)
+        attrs(group)["zcut"] = zcut
+        attrs(group)["Nintegration"] = nintegration
+        _replace_dataset(group, "z_grid", z_grid)
+        !isempty(resolution_grid) && _replace_dataset(group, "resolution_grid", resolution_grid)
+        _replace_dataset(group, "mthr_filled_pixels_healpy", actual_filled)
+        _replace_dataset(group, "mthr_filled_pixels_healpy_to_moc_labels", mapping)
+        _replace_dataset(group, "mthr_moc_map", mthr_map)
+        _replace_dataset(group, "uniq_moc_map", uniq)
+    end
+    open(joinpath(outfolder, "$(grouping)_common_zgrid.txt"), "w") do io
+        for z in z_grid
+            println(io, z)
+        end
+    end
+    return outfile
+end
+
+function _upglade_kcorr(kcorr_obj::KCorrection, h, j::Integer, z_grid::AbstractVector{Float64})
+    band = kcorr_obj.band
+    if band == "g-upglade"
+        return kcorr_obj(z_grid; k0=read(h["catalog"], "K_g")[j], dkbydz=read(h["catalog"], "dKbydz_g")[j], z0=read(h["catalog"], "z")[j])
+    elseif band == "r-upglade"
+        return kcorr_obj(z_grid; k0=read(h["catalog"], "K_r")[j], dkbydz=read(h["catalog"], "dKbydz_r")[j], z0=read(h["catalog"], "z")[j])
+    elseif band == "W1-upglade"
+        return kcorr_obj(z_grid; k0=read(h["catalog"], "K_W1")[j], dkbydz=read(h["catalog"], "dKbydz_W1")[j], z0=read(h["catalog"], "z")[j])
+    else
+        return kcorr_obj(z_grid)
+    end
+end
+
+"""
+    calculate_interpolant_files(outfolder, z_grid, pixel, grouping, subgrouping, band, cosmology, epsilon; ptype="gaussian")
+
+Calculate and store one per-pixel `vals_interpolant` dataset for a pixelated
+catalog shard.
+"""
+function calculate_interpolant_files(outfolder::AbstractString, z_grid, pixel::Integer,
+    grouping::AbstractString, subgrouping::AbstractString, band::AbstractString,
+    cosmo_ref::Cosmology.AbstractCosmology, epsilon::Real; ptype::AbstractString="gaussian")
+    zvals = Float64.(collect(z_grid))
+    correction = KCorrection(band)
+    lf = Cosmology.GalaxyLuminosityFunction(band; cosmology=cosmo_ref)
+    rate = Cosmology.LogPowerLawAbsMagnitudeRate(epsilon)
+    path = _pixel_file(outfolder, pixel)
+    h5open(path, "r+") do h
+        group = h[grouping]
+        subgroup = _ensure_group(group, subgrouping)
+        attrs(subgroup)["band"] = String(band)
+        if !_bool_attr(attrs(subgroup), "interpolant_calculated")
+            attrs(subgroup)["epsilon"] = float(epsilon)
+            attrs(subgroup)["ptype"] = String(ptype)
+            mag_key = _hdf5_attr_string(attrs(group)["apparent_magnitude_flag"])
+            mags = Float64.(read(h["catalog"], mag_key))
+            zobs = Float64.(read(h["catalog"], "z"))
+            sigmaz = Float64.(read(h["catalog"], "sigmaz"))
+            dOmega = Float64(attrs(h)["dOmega_sterad"])
+            valid = findall(Bool.(read(group, "valid_galaxies_interpolant")))
+            interpo = zeros(Float64, length(zvals))
+            dl = Cosmology.luminosity_distance(cosmo_ref, zvals)
+            for j in valid
+                kcorr_arr = _upglade_kcorr(correction, h, j, zvals)
+                Mv = Conversions.absolute_magnitude.(mags[j], dl, kcorr_arr)
+                weight = Cosmology.abs_magnitude_rate(rate, lf, Mv)
+                em = em_likelihood_prior_differential_volume(zvals, zobs[j], sigmaz[j], cosmo_ref;
+                    Numsigma=Float64(attrs(group)["Numsigma"]), ptype=String(ptype))
+                interpo .+= weight .* em ./ dOmega
+                all(isnan, interpo) && throw(ArgumentError("interpolant for pixel $pixel became all NaN"))
+            end
+            _replace_dataset(subgroup, "vals_interpolant", interpo)
+            attrs(subgroup)["interpolant_calculated"] = true
+        end
+    end
+    return path
+end
+
+"""
+    build_icarogw_catalog_from_pixelated_files!(outfolder, outfile, grouping, subgrouping; cosmology=FlatLambdaCDM())
+
+Aggregate per-pixel interpolants into the single HDF5 layout consumed by
+`IcarogwCatalog`.
+"""
+function build_icarogw_catalog_from_pixelated_files!(outfolder::AbstractString, outfile::AbstractString,
+    grouping::AbstractString, subgrouping::AbstractString; cosmology::Cosmology.AbstractCosmology=Cosmology.FlatLambdaCDM())
+    z_grid, mthr_map, filled_pixels, mapping = h5open(outfile, "r") do h
+        group = h[grouping]
+        Float64.(read(group, "z_grid")),
+        Float64.(read(group, "mthr_moc_map")),
+        Int.(read(group, "mthr_filled_pixels_healpy")),
+        Int.(read(group, "mthr_filled_pixels_healpy_to_moc_labels"))
+    end
+    npixels = length(mthr_map)
+    dngal = zeros(Float64, length(z_grid), npixels)
+    bg = zeros(Float64, length(z_grid), npixels)
+    band = nothing
+    epsilon = nothing
+    first_meta_loaded = false
+    dl = Cosmology.luminosity_distance(cosmology, z_grid)
+
+    for row0 in 0:(npixels - 1)
+        idx = findfirst(==(row0), mapping)
+        if idx !== nothing
+            pixel = filled_pixels[idx]
+            h5open(_pixel_file(outfolder, pixel), "r") do h
+                subgroup = h[grouping][subgrouping]
+                vals = Float64.(read(subgroup, "vals_interpolant"))
+                length(vals) == length(z_grid) || throw(ArgumentError("pixel $pixel interpolant length $(length(vals)) does not match common z_grid length $(length(z_grid))"))
+                dngal[:, row0 + 1] .= vals
+                if !first_meta_loaded
+                    band = _hdf5_attr_string(attrs(subgroup)["band"])
+                    epsilon = Float64(attrs(subgroup)["epsilon"])
+                    first_meta_loaded = true
+                end
+            end
+        end
+    end
+    first_meta_loaded || throw(ArgumentError("no per-pixel interpolants were found for $grouping/$subgrouping"))
+    lf = Cosmology.GalaxyLuminosityFunction(String(band); cosmology)
+    rate = Cosmology.LogPowerLawAbsMagnitudeRate(epsilon)
+    for row in 1:npixels
+        Mthr = Conversions.absolute_magnitude.(mthr_map[row], dl, 0.0)
+        bg[:, row] .= background_effective_galaxy_density(lf, Mthr, z_grid, rate) .* Cosmology.dvc_dz_dOmega(cosmology, z_grid)
+    end
+    h5open(outfile, "r+") do h
+        subgroup = _ensure_group(h[grouping], subgrouping)
+        attrs(subgroup)["band"] = String(band)
+        attrs(subgroup)["epsilon"] = epsilon
+        _replace_dataset(subgroup, "vals_interpolant", dngal)
+        _replace_dataset(subgroup, "bg_vals_interpolant", bg)
+    end
+    return IcarogwCatalog(outfile, grouping, subgrouping; cosmology)
 end
 
 function _read_optional_dataset(group, name::AbstractString)
