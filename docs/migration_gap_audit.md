@@ -60,8 +60,9 @@ complete until the final review checklist proves full scientific coverage.
   counterpart attachment, and catalog-aware workflows. Non-catalog cut,
   effective-sample-size, expected-detection, and reweighting helpers are
   implemented as pure Julia functions.
-- `conversions.py`: `ligo_skymap`, HEALPix coordinate helpers, and joint
-  effective-spin KDE helpers.
+- `conversions.py`: `ligo_skymap` and HEALPix coordinate helpers remain.
+  Joint effective-spin KDE helpers are now covered by RNG-explicit Julia
+  implementations.
 - `priors.py` and `wrappers.py`: standalone advanced priors, extended spin
   families, and dependency-free dip/Farah/bin paired mass wrapper compositions
   are implemented with fixture coverage. Complex multi-peak and conditioned

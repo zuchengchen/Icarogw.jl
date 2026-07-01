@@ -16,6 +16,7 @@ import math
 import pathlib
 import sys
 import types
+import numpy as np
 from typing import Iterable
 
 
@@ -109,6 +110,41 @@ def _install_lightweight_reference_package() -> None:
     sys.modules.setdefault("tqdm", tqdm_stub)
 
 
+def _load_lightweight_conversions_module():
+    """Load ``conversions.py`` with catalog/skymap imports stubbed out."""
+
+    _install_lightweight_reference_package()
+
+    healpy_stub = types.ModuleType("healpy")
+    sys.modules.setdefault("healpy", healpy_stub)
+
+    ligo_stub = types.ModuleType("ligo")
+    skymap_stub = types.ModuleType("ligo.skymap")
+    skymap_io_stub = types.ModuleType("ligo.skymap.io")
+    skymap_fits_stub = types.ModuleType("ligo.skymap.io.fits")
+    skymap_fits_stub.read_sky_map = lambda *args, **kwargs: (_ for _ in ()).throw(
+        RuntimeError("skymap fixtures are not part of this lightweight suite")
+    )
+    ligo_stub.skymap = skymap_stub
+    skymap_stub.io = skymap_io_stub
+    skymap_io_stub.fits = skymap_fits_stub
+    sys.modules.setdefault("ligo", ligo_stub)
+    sys.modules.setdefault("ligo.skymap", skymap_stub)
+    sys.modules.setdefault("ligo.skymap.io", skymap_io_stub)
+    sys.modules.setdefault("ligo.skymap.io.fits", skymap_fits_stub)
+
+    astropy_healpix_stub = types.ModuleType("astropy_healpix")
+    sys.modules.setdefault("astropy_healpix", astropy_healpix_stub)
+
+    astropy_stub = sys.modules.setdefault("astropy", types.ModuleType("astropy"))
+    units_stub = types.ModuleType("astropy.units")
+    units_stub.rad = 1.0
+    astropy_stub.units = units_stub
+    sys.modules.setdefault("astropy.units", units_stub)
+
+    return _load_reference_module("icarogw.reference_conversions", "icarogw/conversions.py")
+
+
 def _write_rows(path: pathlib.Path, fieldnames: Iterable[str], rows: Iterable[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as handle:
@@ -126,6 +162,7 @@ def generate_core(outdir: pathlib.Path) -> list[pathlib.Path]:
     fixture suites.
     """
 
+    conversions = _load_lightweight_conversions_module()
     m1 = 36.0
     m2 = 21.0
     luminosity = 3.0128e28
@@ -135,6 +172,17 @@ def generate_core(outdir: pathlib.Path) -> list[pathlib.Path]:
     cos1 = 0.3
     cos2 = -0.2
     q = m2 / m1
+    q_spin = np.array([0.45, 0.80])
+    xeff_spin = np.array([0.10, -0.20])
+    xp_spin = np.array([0.25, 0.40])
+    np.random.seed(321)
+    conditional_chi_p_prior = conversions.chi_p_prior_given_chi_eff_q(
+        q_spin[0], 1.0, xeff_spin[0], xp_spin[0], ndraws=2000
+    )
+    np.random.seed(322)
+    joint_spin_prior = conversions.joint_prior_from_isotropic_spins(
+        q_spin, 1.0, xeff_spin, xp_spin, ndraws=2000
+    )
 
     rows = [
         {
@@ -154,6 +202,15 @@ def generate_core(outdir: pathlib.Path) -> list[pathlib.Path]:
             "q": q,
             "chi_eff": (chi1 * cos1 + q * chi2 * cos2) / (1 + q),
             "chi_p": max(chi1 * (1 - cos1**2) ** 0.5, q * (4 * q + 3) / (4 + 3 * q) * chi2 * (1 - cos2**2) ** 0.5),
+            "q_spin_1": q_spin[0],
+            "xeff_spin_1": xeff_spin[0],
+            "xp_spin_1": xp_spin[0],
+            "conditional_chi_p_prior": conditional_chi_p_prior,
+            "q_spin_2": q_spin[1],
+            "xeff_spin_2": xeff_spin[1],
+            "xp_spin_2": xp_spin[1],
+            "joint_spin_prior_1": joint_spin_prior[0],
+            "joint_spin_prior_2": joint_spin_prior[1],
         }
     ]
     path = outdir / "generated_reference_conversions_core.csv"
@@ -176,6 +233,15 @@ def generate_core(outdir: pathlib.Path) -> list[pathlib.Path]:
             "q",
             "chi_eff",
             "chi_p",
+            "q_spin_1",
+            "xeff_spin_1",
+            "xp_spin_1",
+            "conditional_chi_p_prior",
+            "q_spin_2",
+            "xeff_spin_2",
+            "xp_spin_2",
+            "joint_spin_prior_1",
+            "joint_spin_prior_2",
         ),
         rows,
     )

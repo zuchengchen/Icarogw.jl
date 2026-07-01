@@ -55,6 +55,7 @@ Status meanings:
 | `chi_effective_prior_from_aligned_spins` | same name | implemented | Native piecewise density. |
 | `chi_effective_prior_from_isotropic_spins` | same name | implemented | Native convolution/quadrature density. |
 | `chi_p_prior_from_isotropic_spins` | same name | implemented | Native maximum-distribution density. |
+| `joint_prior_from_isotropic_spins`, `chi_p_prior_given_chi_eff_q` | same names | implemented | RNG-explicit Monte Carlo and weighted KDE helpers. |
 | `chi_eff_from_spins`, `chi_p_from_spins`, `cartestianspins2chis` | `chi_eff_from_spins`, `chi_p_from_spins`, `cartesian_spins_to_chis` | implemented/renamed | Core spin conversions. |
 | skymap/HEALPix helpers | catalog/skymap future module | planned | Not first-version core. |
 

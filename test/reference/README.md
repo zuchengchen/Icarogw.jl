@@ -8,6 +8,11 @@ The comparisons intentionally allow small tolerances where the native Julia
 implementation uses direct quadrature while the reference implementation used
 interpolated tables or closed-form special-function expressions.
 
+`reference_conversions_core.csv` covers core mass, luminosity, spin-conversion,
+and effective-spin-prior helpers. The joint effective-spin prior columns come
+from fixed-seed Monte Carlo/KDE smoke runs and are compared with a loose
+tolerance.
+
 `reference_stochastic_dedf.csv` was generated from local
 `../icarogw/icarogw/omega_gw.py` with
 `python scripts/fixtures/generate_python_reference.py --suite stochastic-smoke`.

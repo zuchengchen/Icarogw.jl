@@ -70,6 +70,14 @@ end
     @test M2L(conv_ref.M) ≈ conv_ref.M2L rtol=1e-14
     @test chi_eff_from_spins(conv_ref.chi1, conv_ref.chi2, conv_ref.cos1, conv_ref.cos2, conv_ref.q) ≈ conv_ref.chi_eff rtol=1e-14
     @test chi_p_from_spins(conv_ref.chi1, conv_ref.chi2, conv_ref.cos1, conv_ref.cos2, conv_ref.q) ≈ conv_ref.chi_p rtol=1e-14
+    conditional_chi_p = chi_p_prior_given_chi_eff_q(MersenneTwister(321),
+        conv_ref.q_spin_1, 1.0, conv_ref.xeff_spin_1, conv_ref.xp_spin_1; ndraws=2000)
+    @test conditional_chi_p ≈ conv_ref.conditional_chi_p_prior rtol=0.25
+    joint_spin = joint_prior_from_isotropic_spins(MersenneTwister(322),
+        [conv_ref.q_spin_1, conv_ref.q_spin_2], 1.0,
+        [conv_ref.xeff_spin_1, conv_ref.xeff_spin_2],
+        [conv_ref.xp_spin_1, conv_ref.xp_spin_2]; ndraws=2000)
+    @test joint_spin ≈ [conv_ref.joint_spin_prior_1, conv_ref.joint_spin_prior_2] rtol=0.25
 
     spin_ref = CSV.File(joinpath(refdir, "reference_spin_core.csv")) |> DataFrame
     for row in eachrow(spin_ref)
