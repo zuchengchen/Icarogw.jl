@@ -27,6 +27,7 @@ export AbstractRedshiftRate,
     CBCLowLatencySkyMapEMCounterpartRate,
     MixtureRate,
     SpinWeightedRate,
+    PEOnlySpinWeightedRate,
     SimplePowerLawPopulation,
     materialize,
     log_event_rate,
@@ -345,6 +346,22 @@ struct SpinWeightedRate{B<:AbstractCBCRateModel,S,C<:Tuple} <: AbstractCBCRateMo
 end
 SpinWeightedRate(base::AbstractCBCRateModel, spin_prior) =
     SpinWeightedRate(base, spin_prior, _default_spin_columns(spin_prior))
+
+"""
+    PEOnlySpinWeightedRate(base_model, spin_prior, spin_columns)
+
+Compose a CBC rate model with an extra posterior-sample-only spin or pSEOB
+prior. Event weights include `spin_prior`; injection weights use the base
+model unchanged. This matches Python `CBC_vanilla_rate_pseob_dummy`.
+"""
+struct PEOnlySpinWeightedRate{B<:AbstractCBCRateModel,S,C<:Tuple} <: AbstractCBCRateModel
+    base::B
+    spin_prior::S
+    spin_columns::C
+end
+PEOnlySpinWeightedRate(base::AbstractCBCRateModel, spin_prior) =
+    PEOnlySpinWeightedRate(base, spin_prior, _default_spin_columns(spin_prior))
+
 _default_spin_columns(::DefaultSpinPrior) = (:chi_1, :chi_2, :cos_t_1, :cos_t_2)
 _default_spin_columns(::GaussianComponentSpinPrior) = (:chi_1, :chi_2, :cos_t_1, :cos_t_2)
 _default_spin_columns(::EvolvingGaussianSpinPrior) = (:chi_1, :chi_2, :cos_t_1, :cos_t_2, :mass_1_source, :mass_2_source)
@@ -391,9 +408,11 @@ materialize(model::SimplePowerLawPopulation, theta=nothing; kwargs...) = theta =
 
 _rate_scale(model) = model.scale_free ? 0.0 : log(model.R0)
 _rate_scale(model::SpinWeightedRate) = _rate_scale(model.base)
+_rate_scale(model::PEOnlySpinWeightedRate) = _rate_scale(model.base)
 _rate_scale(model::Union{CBCCatalogVanillaRate,CBCCatalogSkyMapRate}) = model.scale_free ? 0.0 : log(model.Rgal)
 _rate_model_scale_free(model) = hasproperty(model, :scale_free) ? getproperty(model, :scale_free) : false
 _rate_model_scale_free(model::SpinWeightedRate) = _rate_model_scale_free(model.base)
+_rate_model_scale_free(model::PEOnlySpinWeightedRate) = _rate_model_scale_free(model.base)
 _background_cosmology(c::AbstractCosmology) = hasproperty(c, :base) ? getproperty(c, :base) : c
 _log_positive(x::Real) = x > 0 && isfinite(x) ? log(x) : -Inf
 
@@ -581,6 +600,19 @@ function log_injection_rate(model::SpinWeightedRate, args...)
     spin_args = args[(nbase + 1):(end - 1)]
     prior = args[end]
     return log_injection_rate(model.base, base_args..., prior) + logpdf(model.spin_prior, spin_args...)
+end
+
+function log_event_rate(model::PEOnlySpinWeightedRate, args...)
+    nbase = length(args) - length(model.spin_columns) - 1
+    nbase >= 1 || throw(ArgumentError("PEOnlySpinWeightedRate requires base event columns, spin columns, and prior"))
+    base_args = args[1:nbase]
+    spin_args = args[(nbase + 1):(end - 1)]
+    prior = args[end]
+    return log_event_rate(model.base, base_args..., prior) + logpdf(model.spin_prior, spin_args...)
+end
+
+function log_injection_rate(model::PEOnlySpinWeightedRate, args...)
+    return log_injection_rate(model.base, args...)
 end
 
 function log_event_rate(model::MixtureRate, args...)

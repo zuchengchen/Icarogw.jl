@@ -160,3 +160,13 @@ display(@benchmark event_logweights($em_rate, $em_ps))
 display(@benchmark injection_logweights($em_rate, $em_inj))
 display(@benchmark event_logweights($sky_em_rate, $sky_em_ps))
 display(@benchmark injection_logweights($sky_em_rate, $sky_em_inj))
+
+pseob_rate = PEOnlySpinWeightedRate(CBCVanillaRate(catalog_cosmology, em_mass, PowerLawRate(0.0); R0=1.0),
+    PSEOBGaussianPrior(0.1, 1.2, -0.2, 1.5, 0.25))
+pseob_ps = PosteriorSamples((mass_1=fill(36.0, length(em_z)), mass_2=fill(24.0, length(em_z)),
+    luminosity_distance=em_dl, domega220=fill(-0.2, length(em_z)), dtau220=fill(0.4, length(em_z)),
+    prior=ones(length(em_z))))
+
+println("PE-only pSEOB rate")
+display(@benchmark event_logweights($pseob_rate, $pseob_ps))
+display(@benchmark injection_logweights($pseob_rate, $em_inj))

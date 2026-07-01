@@ -976,6 +976,15 @@ end
     @test pseob_rate.spin_columns == (:domega220, :dtau220)
     @test log_event_rate(pseob_rate, m1d, m2d, dl, -0.2, 0.4, prior) ≈
         log_event_rate(pseob_rate.base, m1d, m2d, dl, prior) + logpdf(pseob_prior, -0.2, 0.4)
+    pseob_dummy_rate = PEOnlySpinWeightedRate(spin_rate.base, pseob_prior)
+    @test pseob_dummy_rate.spin_columns == (:domega220, :dtau220)
+    @test log_event_rate(pseob_dummy_rate, m1d, m2d, dl, -0.2, 0.4, prior) ≈
+        log_event_rate(pseob_dummy_rate.base, m1d, m2d, dl, prior) + logpdf(pseob_prior, -0.2, 0.4)
+    ps_pseob_dummy = PosteriorSamples((mass_1=[m1d], mass_2=[m2d], luminosity_distance=[dl],
+        domega220=[-0.2], dtau220=[0.4], prior=[1.0]))
+    @test event_logweights(pseob_dummy_rate, ps_pseob_dummy) ≈ event_logweights(pseob_rate, ps_pseob_dummy)
+    @test injection_logweights(pseob_dummy_rate, inj_pair) ≈ injection_logweights(spin_rate.base, inj_pair)
+    @test isfinite(loglikelihood(pseob_dummy_rate, PopulationData(PosteriorSampleSet(ps_pseob_dummy), inj_pair)))
 
     mixture = MixtureRate(
         CBCVanillaRate(c, ConditionalMassDistribution(mass, PowerLaw(5.0, 100.0, 1.0)), PowerLawRate(0.0); R0=1),

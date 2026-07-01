@@ -64,8 +64,8 @@ complete until the final review checklist proves full scientific coverage.
   catalog/EM stochastic joint likelihoods remain open. Catalog-aware CBC rates
   now consume runtime catalog interpolants and pixelized `:sky_indices`, and
   EM counterpart rates consume `:z_EM` plus optional skymap sky coordinates.
-  Standard pSEOB weighting composes through `SpinWeightedRate`, while Python's
-  pSEOB dummy injection asymmetry remains a specialized gap.
+  Standard and dummy pSEOB weighting compose through `SpinWeightedRate` and
+  `PEOnlySpinWeightedRate`.
 - `posterior_samples.py` and `injections.py`: higher-level catalog-aware
   workflows. Dependency-light posterior parallel workspaces, counterpart
   redshift-column attachment, HEALPix/catalog pixelization, non-catalog cuts,

@@ -129,6 +129,9 @@ The low-latency skymap EM model expects `:z_EM`, `:right_ascension`, and
 Spin variants are represented by `SpinWeightedRate(base_model, spin_prior)`,
 which composes `DefaultSpinPrior` or `GaussianSpinPrior` with the mass/redshift
 rate model instead of duplicating every Python spin wrapper class.
+`PEOnlySpinWeightedRate` covers Python's `_dummy` pSEOB pattern where PE
+weights include `domega220`/`dtau220` but injection weights use the base CBC
+model.
 
 ## Posterior Workflows
 
