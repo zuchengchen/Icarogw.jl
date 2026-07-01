@@ -44,11 +44,13 @@ complete until the final review checklist proves full scientific coverage.
 
 ## Current Largest Gaps
 
-- `catalog.py`: complete pixelated catalog preparation, HDF5/FITS-compatible
-  runtime catalog types, redshift grids, magnitude thresholds, effective galaxy
-  number interpolants, GW skymap intersections, k-corrections, and EM helpers.
-  The dependency-light Schechter luminosity-function and absolute-magnitude
-  rate formulas used by those workflows are implemented separately.
+- `catalog.py`: complete pixelated catalog preparation, `galaxy_catalog`,
+  catalog-aware rates/likelihoods, and GW/EM workflow integration. The
+  `IcarogwCatalog` and `GwcosmoCatalog` runtime HDF5 readers now cover
+  NUNIQ/HEALPix lookup, magnitude thresholds, sky-dependent and averaged
+  effective galaxy interpolants, and empty-catalog mode; k-corrections,
+  Schechter luminosity functions, absolute-magnitude rates, and EM redshift
+  helpers are also implemented separately.
 - `stochastic.py` and `omega_gw.py`: duplicated `dEdf`, omega-weight, and
   spectral-siren logic is unified in Julia through deterministic
   energy-spectrum, vanilla spectral-siren, Gaussian stochastic-only, simple
@@ -65,9 +67,10 @@ complete until the final review checklist proves full scientific coverage.
   effective-sample-size, expected-detection, and reweighting helpers are
   implemented as pure Julia functions.
 - `conversions.py`: HEALPix coordinate helpers and the first `LigoSkyMap`
-  multi-order FITS/NUNIQ workspace are implemented. Catalog/EM workflows still
-  need to consume those skymap primitives. Joint effective-spin KDE helpers are
-  covered by RNG-explicit Julia implementations.
+  multi-order FITS/NUNIQ workspace are implemented, and the runtime catalog
+  readers consume those skymap primitives. Posterior/injection pixelization and
+  higher-level catalog/EM workflows still need integration. Joint effective-spin
+  KDE helpers are covered by RNG-explicit Julia implementations.
 - `priors.py` and `wrappers.py`: standalone advanced priors, extended spin
   families, and dependency-free dip/Farah/bin/multi-peak paired mass wrapper
   compositions are implemented with fixture coverage. Redshift-linear mixture

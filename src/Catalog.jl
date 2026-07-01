@@ -1,9 +1,14 @@
 module Catalog
 
 using ..Cosmology
+using ..Conversions
+using ..SkyMaps: MOCMap, radec2indeces
+using HDF5
 using QuadGK
 using Random
+using Statistics: mean
 
+import ..SkyMaps: get_NUNIQ_pixel
 import ..Cosmology: background_effective_galaxy_density,
     log_luminosity_function,
     log_luminosity_pdf,
@@ -12,12 +17,22 @@ import ..Cosmology: background_effective_galaxy_density,
     sample_luminosity_function
 
 export LegacyGalaxyLuminosityFunction,
+    IcarogwCatalog,
+    GwcosmoCatalog,
+    icarogw_catalog,
+    gwcosmo_catalog,
     galaxy_MF_dep,
     KCorrection,
     DeprecatedKCorrection,
     kcorr,
     kcorr_dep,
     user_normal,
+    get_NUNIQ_pixel,
+    calc_mthr,
+    calc_Mthr,
+    effective_galaxy_number_interpolant,
+    make_me_empty!,
+    make_me_empty,
     em_likelihood_prior_differential_volume,
     EM_likelihood_prior_differential_volume,
     catalog_planned
@@ -358,15 +373,297 @@ end
 
 const EM_likelihood_prior_differential_volume = em_likelihood_prior_differential_volume
 
+function _hdf5_attr_string(value)
+    value isa AbstractString && return String(value)
+    value isa AbstractVector{UInt8} && return String(value)
+    return String(value)
+end
+
+function _read_matrix(group, name::AbstractString, nz::Integer, npix::Integer)
+    raw = Array{Float64}(read(group, name))
+    if size(raw) == (nz, npix)
+        return raw
+    elseif size(raw) == (npix, nz)
+        return Matrix(permutedims(raw))
+    else
+        throw(ArgumentError("dataset $name has size $(size(raw)); expected ($nz, $npix) or Python/HDF5 transposed ($npix, $nz)"))
+    end
+end
+
+function _interp_linear(x::Real, xs::AbstractVector, ys::AbstractVector; left=0.0, right=0.0)
+    length(xs) == length(ys) || throw(ArgumentError("interpolation arrays must have the same length"))
+    isempty(xs) && throw(ArgumentError("interpolation arrays must not be empty"))
+    x < first(xs) && return left
+    x > last(xs) && return right
+    hi = searchsortedfirst(xs, x)
+    if hi <= 1
+        return first(ys)
+    elseif hi > length(xs)
+        return last(ys)
+    elseif xs[hi] == x
+        return ys[hi]
+    else
+        lo = hi - 1
+        t = (x - xs[lo]) / (xs[hi] - xs[lo])
+        return ys[lo] + t * (ys[hi] - ys[lo])
+    end
+end
+
+function _interp_bounds(xs::AbstractVector, x::Real)
+    (x < first(xs) || x > last(xs)) && return nothing
+    hi = searchsortedfirst(xs, x)
+    if hi <= 1
+        return 1, 1, 0.0
+    elseif hi > length(xs)
+        return length(xs), length(xs), 0.0
+    elseif xs[hi] == x
+        return hi, hi, 0.0
+    else
+        lo = hi - 1
+        return lo, hi, (x - xs[lo]) / (xs[hi] - xs[lo])
+    end
+end
+
+function _interp2_linear(z_grid::AbstractVector, sky_grid::AbstractVector, values::AbstractMatrix, z::Real, skypos::Real; fill=0.0)
+    zbounds = _interp_bounds(z_grid, z)
+    sbounds = _interp_bounds(sky_grid, skypos)
+    (zbounds === nothing || sbounds === nothing) && return fill
+    zlo, zhi, zt = zbounds
+    slo, shi, st = sbounds
+    v00 = values[zlo, slo]
+    v10 = values[zhi, slo]
+    v01 = values[zlo, shi]
+    v11 = values[zhi, shi]
+    vlo = v00 + zt * (v10 - v00)
+    vhi = v01 + zt * (v11 - v01)
+    return vlo + st * (vhi - vlo)
+end
+
+function _vectorize_pair(z, skypos)
+    z_is_scalar = z isa Real
+    sky_is_scalar = skypos isa Real
+    zv = z_is_scalar ? [float(z)] : Float64.(vec(collect(z)))
+    sv = sky_is_scalar ? [Int(skypos)] : Int.(vec(collect(skypos)))
+    if z_is_scalar && !sky_is_scalar
+        zv = fill(first(zv), length(sv))
+    elseif !z_is_scalar && sky_is_scalar
+        sv = fill(first(sv), length(zv))
+    elseif length(zv) != length(sv)
+        throw(ArgumentError("z and sky position inputs must have the same length unless one is scalar"))
+    end
+    shape = z_is_scalar ? (sky_is_scalar ? nothing : size(skypos)) : size(z)
+    return zv, sv, shape
+end
+
+_shape_output(values::Vector{Float64}, ::Nothing) = only(values)
+_shape_output(values::Vector{Float64}, shape) = reshape(values, shape)
+
+function _optional_distance_vector(dl, n::Integer)
+    dl === nothing && return nothing
+    values = dl isa Real ? fill(float(dl), n) : Float64.(vec(collect(dl)))
+    length(values) == n || throw(ArgumentError("dl must have the same length as z"))
+    return values
+end
+
+function _distance_vector(cosmology::Cosmology.AbstractCosmology, z::AbstractVector, dl)
+    values = _optional_distance_vector(dl, length(z))
+    return values === nothing ? Cosmology.luminosity_distance(cosmology, z) : values
+end
+
+"""
+    IcarogwCatalog(path, grouping, subgrouping; cosmology=FlatLambdaCDM())
+
+Runtime reader for Python `icarogw_catalog` HDF5 products. It expects
+`mthr_moc_map`, `uniq_moc_map`, `z_grid`, and a subgroup containing
+`vals_interpolant` and `bg_vals_interpolant`.
+"""
+struct IcarogwCatalog
+    path::String
+    grouping::String
+    subgrouping::String
+    moc_mthr_map::MOCMap{Float64}
+    z_grid::Vector{Float64}
+    band::String
+    epsilon::Float64
+    luminosity_function::Cosmology.GalaxyLuminosityFunction
+    abs_magnitude_rate::Cosmology.LogPowerLawAbsMagnitudeRate
+    sky_grid::Vector{Float64}
+    dNgal_dzdOm_vals::Matrix{Float64}
+    dNgal_dzdOm_vals_av::Vector{Float64}
+    bg_vals_av::Vector{Float64}
+end
+
+function IcarogwCatalog(path::AbstractString, grouping::AbstractString, subgrouping::AbstractString;
+    cosmology::Cosmology.AbstractCosmology=Cosmology.FlatLambdaCDM())
+    h5open(path, "r") do h
+        group = h[String(grouping)]
+        subgroup = group[String(subgrouping)]
+        mthr = Float64.(read(group, "mthr_moc_map"))
+        uniq = Int.(read(group, "uniq_moc_map"))
+        z_grid = Float64.(read(group, "z_grid"))
+        band = _hdf5_attr_string(attrs(subgroup)["band"])
+        epsilon = Float64(attrs(subgroup)["epsilon"])
+        nz, npix = length(z_grid), length(uniq)
+        dngal = _read_matrix(subgroup, "vals_interpolant", nz, npix)
+        bg = _read_matrix(subgroup, "bg_vals_interpolant", nz, npix)
+        lf = Cosmology.GalaxyLuminosityFunction(band; cosmology)
+        rate = Cosmology.LogPowerLawAbsMagnitudeRate(epsilon)
+        sky_grid = Float64.(1:npix)
+        return IcarogwCatalog(String(path), String(grouping), String(subgrouping), MOCMap(mthr, uniq),
+            z_grid, band, epsilon, lf, rate, sky_grid, dngal, vec(mean(dngal; dims=2)), vec(mean(bg; dims=2)))
+    end
+end
+
+const icarogw_catalog = IcarogwCatalog
+
+get_NUNIQ_pixel(c::IcarogwCatalog, ra, dec) = get_NUNIQ_pixel(c.moc_mthr_map, ra, dec)
+
+"""
+    calc_mthr(catalog, z, skypos, cosmology; dl=nothing)
+
+Evaluate the absolute-magnitude threshold associated with catalog sky rows.
+"""
+function calc_mthr(c::IcarogwCatalog, z, skypos, cosmology::Cosmology.AbstractCosmology; dl=nothing)
+    zv, sv, shape = _vectorize_pair(z, skypos)
+    dlv = _distance_vector(cosmology, zv, dl)
+    out = Vector{Float64}(undef, length(zv))
+    @inbounds for i in eachindex(zv)
+        row = sv[i]
+        1 <= row <= length(c.moc_mthr_map) || throw(ArgumentError("catalog sky row $row outside 1:$(length(c.moc_mthr_map))"))
+        out[i] = Conversions.absolute_magnitude(c.moc_mthr_map[row], dlv[i], 0.0)
+    end
+    return _shape_output(out, shape)
+end
+const calc_Mthr = calc_mthr
+
+"""
+    effective_galaxy_number_interpolant(catalog, z, skypos, cosmology; average=false, dl=nothing)
+
+Evaluate the in-catalog and background effective galaxy terms
+`(dNgal_dzdOmega, background)` for Python-compatible icarogw catalog files.
+"""
+function effective_galaxy_number_interpolant(c::IcarogwCatalog, z, skypos,
+    cosmology::Cosmology.AbstractCosmology; average::Bool=false, dl=nothing)
+    zv, sv, shape = _vectorize_pair(z, skypos)
+    dlv = _distance_vector(cosmology, zv, dl)
+    gc = Vector{Float64}(undef, length(zv))
+    bg = Vector{Float64}(undef, length(zv))
+    mthr = Float64.(vec(collect(calc_mthr(c, zv, sv, cosmology; dl=dlv))))
+    @inbounds for i in eachindex(zv)
+        zval = zv[i]
+        row = sv[i]
+        outside_grid = zval < first(c.z_grid) || zval > last(c.z_grid)
+        if average
+            gc[i] = _interp_linear(zval, c.z_grid, c.dNgal_dzdOm_vals_av; left=0.0, right=0.0)
+            bg[i] = _interp_linear(zval, c.z_grid, c.bg_vals_av; left=first(c.bg_vals_av), right=last(c.bg_vals_av))
+            if outside_grid
+                bg[i] = background_effective_galaxy_density(c.luminosity_function, -Inf, zval, c.abs_magnitude_rate) *
+                    Cosmology.dvc_dz_dOmega(cosmology, zval)
+            end
+        else
+            gc[i] = _interp2_linear(c.z_grid, c.sky_grid, c.dNgal_dzdOm_vals, zval, row; fill=0.0)
+            mthr_i = outside_grid ? -Inf : mthr[i]
+            bg[i] = background_effective_galaxy_density(c.luminosity_function, mthr_i, zval, c.abs_magnitude_rate) *
+                Cosmology.dvc_dz_dOmega(cosmology, zval)
+        end
+    end
+    return _shape_output(gc, shape), _shape_output(bg, shape)
+end
+
+function make_me_empty!(c::IcarogwCatalog, cosmology::Cosmology.AbstractCosmology=Cosmology.FlatLambdaCDM(zmax=last(c.z_grid) * 2))
+    c.dNgal_dzdOm_vals .= 0.0
+    c.dNgal_dzdOm_vals_av .= 0.0
+    c.bg_vals_av .= background_effective_galaxy_density(c.luminosity_function, -Inf, c.z_grid, c.abs_magnitude_rate) .*
+        Cosmology.dvc_dz_dOmega(cosmology, c.z_grid)
+    return c
+end
+const make_me_empty = make_me_empty!
+
+function _gwcosmo_offset(group)
+    opts = _hdf5_attr_string(attrs(group)["opts"])
+    match_obj = match(r"['\"]offset['\"]\s*:\s*([-+0-9.eE]+)", opts)
+    match_obj === nothing && throw(ArgumentError("gwcosmo catalog opts attribute does not contain an offset"))
+    return parse(Float64, match_obj.captures[1])
+end
+
+function _gwcosmo_array(group, name::AbstractString, offset::Real)
+    return exp.(Float64.(read(group, name))) .- offset
+end
+
+"""
+    GwcosmoCatalog(path, nside, band, epsilon)
+
+Runtime reader for gwcosmo-style line-of-sight HDF5 catalogs.
+"""
+struct GwcosmoCatalog
+    path::String
+    nside::Int
+    band::String
+    epsilon::Float64
+    z_grid::Vector{Float64}
+    pz_empty::Vector{Float64}
+    dNgal_dzdOm_vals_av::Vector{Float64}
+    dNgal_dzdOm_vals::Matrix{Float64}
+    sky_grid::Vector{Float64}
+    luminosity_function::Cosmology.GalaxyLuminosityFunction
+    abs_magnitude_rate::Cosmology.LogPowerLawAbsMagnitudeRate
+end
+
+function GwcosmoCatalog(path::AbstractString, nside::Integer, band::AbstractString, epsilon::Real;
+    cosmology::Cosmology.AbstractCosmology=Cosmology.FlatLambdaCDM())
+    h5open(path, "r") do h
+        offset = _gwcosmo_offset(h)
+        z_grid = Float64.(read(h, "z_array"))
+        npix = 12 * Int(nside)^2
+        vals = Matrix{Float64}(undef, length(z_grid), npix)
+        for pix in 0:(npix - 1)
+            vals[:, pix + 1] = _gwcosmo_array(h, string(pix), offset)
+        end
+        return GwcosmoCatalog(String(path), Int(nside), String(band), Float64(epsilon),
+            z_grid,
+            _gwcosmo_array(h, "empty_catalogue", offset),
+            _gwcosmo_array(h, "combined_pixels", offset),
+            vals,
+            Float64.(1:npix),
+            Cosmology.GalaxyLuminosityFunction(String(band); cosmology),
+            Cosmology.LogPowerLawAbsMagnitudeRate(epsilon))
+    end
+end
+
+const gwcosmo_catalog = GwcosmoCatalog
+
+get_NUNIQ_pixel(c::GwcosmoCatalog, ra, dec) = radec2indeces(ra, dec, c.nside; nest=true)
+
+function effective_galaxy_number_interpolant(c::GwcosmoCatalog, z, skypos,
+    cosmology::Cosmology.AbstractCosmology; average::Bool=false, dl=nothing)
+    zv, sv, shape = _vectorize_pair(z, skypos)
+    gc = Vector{Float64}(undef, length(zv))
+    bg = zeros(Float64, length(zv))
+    @inbounds for i in eachindex(zv)
+        gc[i] = average ?
+            _interp_linear(zv[i], c.z_grid, c.dNgal_dzdOm_vals_av; left=0.0, right=0.0) :
+            _interp2_linear(c.z_grid, c.sky_grid, c.dNgal_dzdOm_vals, zv[i], sv[i]; fill=0.0)
+    end
+    return _shape_output(gc, shape), _shape_output(bg, shape)
+end
+
+function make_me_empty!(c::GwcosmoCatalog)
+    c.dNgal_dzdOm_vals_av .= c.pz_empty
+    for j in axes(c.dNgal_dzdOm_vals, 2)
+        c.dNgal_dzdOm_vals[:, j] .= c.pz_empty
+    end
+    return c
+end
+
 """
     catalog_planned()
 
-Galaxy catalog, dark-siren, and bright-siren functionality is planned but not
-implemented in the first native Julia version. This placeholder exists so users
+Higher-level galaxy catalog, dark-siren, and bright-siren workflows are still
+planned beyond the runtime catalog readers. This placeholder exists so users
 get an explicit error instead of a silent partial implementation.
 """
 function catalog_planned()
-    throw(ErrorException("Catalog and EM-counterpart functionality is planned, not implemented in Icarogw.jl first-version scope."))
+    throw(ErrorException("Higher-level catalog and EM-counterpart workflows are planned beyond the runtime catalog readers."))
 end
 
 end

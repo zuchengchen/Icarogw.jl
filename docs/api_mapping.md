@@ -36,7 +36,7 @@ Status meanings:
 | `extraD_astropycosmology` | `ExtraDCosmology` | implemented/renamed | Luminosity-distance wrapper. |
 | `cM_astropycosmology` | `PlanckMassCosmology` | implemented/renamed | Native integral. |
 | `alphalog_astropycosmology` | `AlphaLogCosmology` | implemented/renamed | Luminosity-distance wrapper. |
-| `galaxy_MF`, `basic_absM_rate`, `log_powerlaw_absM_rate` | `GalaxyLuminosityFunction`, `AbstractAbsMagnitudeRate`, `LogPowerLawAbsMagnitudeRate` | implemented/renamed | Dependency-light Schechter and absolute-magnitude rate formulas with fixture coverage; full catalog runtime remains planned. |
+| `galaxy_MF`, `basic_absM_rate`, `log_powerlaw_absM_rate` | `GalaxyLuminosityFunction`, `AbstractAbsMagnitudeRate`, `LogPowerLawAbsMagnitudeRate` | implemented/renamed | Dependency-light Schechter and absolute-magnitude rate formulas with fixture coverage; runtime catalog readers consume them, while preprocessing and catalog-aware rates remain separate gaps. |
 | `powerlaw_rate`, `md_rate`, `md_gamma_rate`, `beta_rate`, `beta_rate_line` | `PowerLawRate`, `MadauRate`, `MadauGammaRate`, `BetaRate`, `BetaLineRate` | implemented/renamed | Native structs. |
 
 ## conversions.py
@@ -153,7 +153,7 @@ Status meanings:
 | `kcorr`, `kcorr_dep` | `KCorrection`, `DeprecatedKCorrection` | implemented/renamed | Modern and legacy dependency-light K-correction formulas with Python fixture coverage. |
 | `galaxy_MF_dep` | `LegacyGalaxyLuminosityFunction`, `galaxy_MF_dep` | implemented/renamed | Legacy W1/K/bJ Schechter helper with Python fixture coverage; `GalaxyLuminosityFunction` remains preferred for new code. |
 | `EM_likelihood_prior_differential_volume` | `em_likelihood_prior_differential_volume`, `EM_likelihood_prior_differential_volume` | implemented/renamed | Uniform, gaussian, and gaussian-without-comoving-volume redshift helper with fixture coverage. |
-| galaxy catalog / EM counterpart runtime APIs | `Catalog.catalog_planned` | planned | Pixelated catalog and counterpart workflows should consume the new skymap primitives; catalog runtime design remains pending. |
+| `icarogw_catalog`, `gwcosmo_catalog` | `IcarogwCatalog`, `GwcosmoCatalog` | implemented/renamed | Runtime HDF5 readers, NUNIQ/HEALPix row lookup, magnitude thresholds, effective galaxy interpolants, and `make_me_empty!` compatibility helpers. Pixelated catalog builders, `galaxy_catalog`, and catalog-aware rates remain separate gaps. |
 | stochastic background APIs | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw`, `StochasticData`, `read_stochastic_csv`, `read_stochastic_hdf5`, `stochastic_loglikelihood` | implemented/renamed | Energy spectrum, omega weights, vanilla spectral-siren helper, Gaussian stochastic likelihood, and simple freqs/Cf/sigma2s readers are implemented. |
 | `Omega_GW` helpers | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw`, `joint_loglikelihood` | implemented/merged | Duplicate Python `stochastic.py`/`omega_gw.py` formulas are unified in Julia with a vanilla CBC+stochastic helper. |
 | `utils.check_posterior_samples_and_prior` | `check_posterior_samples_and_prior` | implemented | Non-Condor validation helper. |

@@ -2,6 +2,7 @@ using Icarogw
 using CSV
 using DataFrames
 using FITSIO
+using HDF5
 using Random
 using Test
 
@@ -119,6 +120,113 @@ end
         @test from_fits.uniq == uniq
         @test from_fits.probdensity == probdensity
         @test evaluate_3d_posterior_likelihood(from_fits, dl, ra, dec)[1] ≈ ppost
+    end
+end
+
+@testset "catalog runtime readers" begin
+    catalog_cosmology = FlatLambdaCDM(zmax=1.0)
+    level = 0
+    nside = healpix_level_to_nside(level)
+    npix = 12 * nside^2
+    uniq = [level_ipix_to_uniq(level, ipix) for ipix in 0:(npix - 1)]
+    mthr = collect(range(18.0, 29.0; length=npix))
+    z_grid = [0.1, 0.2, 0.4]
+    dngal = [100.0 * iz + pix for iz in 1:length(z_grid), pix in 1:npix]
+    bg_vals = [10.0 * iz + 0.5pix for iz in 1:length(z_grid), pix in 1:npix]
+
+    mktempdir() do dir
+        path = joinpath(dir, "icarogw_catalog.h5")
+        h5open(path, "w") do h
+            group = create_group(h, "K")
+            write(group, "mthr_moc_map", mthr)
+            write(group, "uniq_moc_map", uniq)
+            write(group, "z_grid", z_grid)
+            subgroup = create_group(group, "weighted")
+            attrs(subgroup)["band"] = "K-glade+"
+            attrs(subgroup)["epsilon"] = 0.8
+            write(subgroup, "vals_interpolant", permutedims(dngal))
+            write(subgroup, "bg_vals_interpolant", permutedims(bg_vals))
+        end
+
+        catalog = IcarogwCatalog(path, "K", "weighted"; cosmology=catalog_cosmology)
+        @test icarogw_catalog === IcarogwCatalog
+        @test catalog.band == "K-glade+"
+        @test catalog.epsilon == 0.8
+        @test catalog.dNgal_dzdOm_vals == dngal
+        @test catalog.dNgal_dzdOm_vals_av ≈ vec(sum(dngal; dims=2)) ./ npix
+        @test catalog.bg_vals_av ≈ vec(sum(bg_vals; dims=2)) ./ npix
+
+        ra, dec = 0.2, 0.1
+        row = get_NUNIQ_pixel(catalog, ra, dec)
+        @test row == radec2indeces(ra, dec, nside; nest=true)
+        @test get_NUNIQ_pixel(catalog, [ra], [dec]) == [row]
+        @test calc_mthr(catalog, 0.2, row, catalog_cosmology; dl=100.0) ≈
+              absolute_magnitude(mthr[row], 100.0, 0.0)
+        @test calc_Mthr(catalog, [0.1, 0.2], row, catalog_cosmology; dl=fill(100.0, 2)) ≈
+              absolute_magnitude.(fill(mthr[row], 2), fill(100.0, 2), 0.0)
+
+        gc, bg = effective_galaxy_number_interpolant(catalog, 0.2, row, catalog_cosmology; dl=100.0)
+        expected_mthr = absolute_magnitude(mthr[row], 100.0, 0.0)
+        @test gc ≈ dngal[2, row]
+        @test bg ≈ background_effective_galaxy_density(catalog.luminosity_function, expected_mthr,
+            0.2, catalog.abs_magnitude_rate) * dvc_dz_dOmega(catalog_cosmology, 0.2)
+
+        gc_interp, _ = effective_galaxy_number_interpolant(catalog, 0.15, row, catalog_cosmology; dl=100.0)
+        @test gc_interp ≈ (dngal[1, row] + dngal[2, row]) / 2
+
+        gc_av, bg_av = effective_galaxy_number_interpolant(catalog, 0.2, row, catalog_cosmology; average=true)
+        @test gc_av ≈ catalog.dNgal_dzdOm_vals_av[2]
+        @test bg_av ≈ catalog.bg_vals_av[2]
+
+        gc_out, bg_out = effective_galaxy_number_interpolant(catalog, 0.5, row, catalog_cosmology; dl=100.0)
+        @test gc_out == 0.0
+        @test bg_out ≈ background_effective_galaxy_density(catalog.luminosity_function, -Inf,
+            0.5, catalog.abs_magnitude_rate) * dvc_dz_dOmega(catalog_cosmology, 0.5)
+
+        make_me_empty!(catalog, catalog_cosmology)
+        @test all(iszero, catalog.dNgal_dzdOm_vals)
+        @test all(iszero, catalog.dNgal_dzdOm_vals_av)
+        @test catalog.bg_vals_av ≈ background_effective_galaxy_density(catalog.luminosity_function,
+            -Inf, z_grid, catalog.abs_magnitude_rate) .* dvc_dz_dOmega(catalog_cosmology, z_grid)
+    end
+
+    mktempdir() do dir
+        path = joinpath(dir, "gwcosmo_catalog.h5")
+        offset = 0.25
+        pz_empty = [1.0, 2.0, 3.0]
+        combined = [10.0, 20.0, 40.0]
+        vals = [100.0 * pix + iz for iz in 1:length(z_grid), pix in 1:npix]
+        h5open(path, "w") do h
+            attrs(h)["opts"] = "{'offset': $offset}"
+            write(h, "z_array", z_grid)
+            write(h, "empty_catalogue", log.(pz_empty .+ offset))
+            write(h, "combined_pixels", log.(combined .+ offset))
+            for pix in 0:(npix - 1)
+                write(h, string(pix), log.(vals[:, pix + 1] .+ offset))
+            end
+        end
+
+        catalog = GwcosmoCatalog(path, nside, "K-glade+", 0.8; cosmology=catalog_cosmology)
+        @test gwcosmo_catalog === GwcosmoCatalog
+        @test catalog.z_grid == z_grid
+        @test catalog.pz_empty ≈ pz_empty
+        @test catalog.dNgal_dzdOm_vals_av ≈ combined
+        @test catalog.dNgal_dzdOm_vals ≈ vals
+
+        ra, dec = 0.2, 0.1
+        row = get_NUNIQ_pixel(catalog, ra, dec)
+        @test row == radec2indeces(ra, dec, nside; nest=true)
+        gc, bg = effective_galaxy_number_interpolant(catalog, 0.2, row, catalog_cosmology)
+        @test gc ≈ vals[2, row]
+        @test bg == 0.0
+
+        gc_av, bg_av = effective_galaxy_number_interpolant(catalog, [0.1, 0.2], row, catalog_cosmology; average=true)
+        @test gc_av ≈ combined[1:2]
+        @test bg_av == zeros(2)
+
+        make_me_empty!(catalog)
+        @test catalog.dNgal_dzdOm_vals_av ≈ pz_empty
+        @test all(catalog.dNgal_dzdOm_vals[:, j] ≈ pz_empty for j in axes(catalog.dNgal_dzdOm_vals, 2))
     end
 end
 
