@@ -24,10 +24,14 @@ export simulate_sources,
     mass_ratio_noise,
     theta_noise,
     noise,
+    dvc_dz_reweight,
     apply_snr_cut,
     snr_and_freq_cut,
     snr_cut_flat,
     likelihood_evaluation,
+    quick_data_preparation,
+    pe_quick_generation_samples,
+    PE_quick_generation_samples,
     generate_posterior_samples,
     generate_injections,
     simulate_population_data
@@ -208,6 +212,31 @@ end
 noise(Md, q, theta, rho_obs; rng=Random.default_rng()) = noise(rng, Md, q, theta, rho_obs)
 
 """
+    dvc_dz_reweight(rng, m1, m2, z; cosmology=PLANCK15_FLATLCDM, extra=())
+
+Resample source-frame masses and redshifts with weights proportional to
+`dVc/dz / (1+z)`, matching Python `dVc_dz_reweight`. Optional `extra`
+vectors are resampled with the same indices and returned after `(m1, m2, z)`.
+"""
+function dvc_dz_reweight(rng::AbstractRNG, m1, m2, z; cosmology::AbstractCosmology=PLANCK15_FLATLCDM, extra=())
+    m1v = _as_vector(m1)
+    m2v = _as_vector(m2)
+    zv = _as_vector(z)
+    length(m1v) == length(m2v) == length(zv) || throw(ArgumentError("m1, m2, and z must have the same length"))
+    extras = Tuple(_as_vector(e) for e in extra)
+    all(length(e) == length(zv) for e in extras) || throw(ArgumentError("extra arrays must match z length"))
+    weights = dvc_dz(cosmology, zv) ./ (1 .+ zv)
+    total = sum(weights)
+    total > 0 && isfinite(total) || throw(ArgumentError("invalid dVc/dz reweighting weights"))
+    idx = sample(rng, 1:length(zv), Weights(weights ./ total), length(zv); replace=true)
+    resampled = (m1v[idx], m2v[idx], zv[idx])
+    isempty(extras) && return resampled
+    return (resampled..., (e[idx] for e in extras)...)
+end
+dvc_dz_reweight(m1, m2, z; rng=Random.default_rng(), kwargs...) =
+    dvc_dz_reweight(rng, m1, m2, z; kwargs...)
+
+"""
     apply_snr_cut(samples, snr; snr_threshold=12, fgw_cut=15)
 
 Return a Boolean detection mask applying an observed SNR threshold and an ISCO
@@ -265,6 +294,120 @@ function likelihood_evaluation(rhos, qs, Mds, thetas, rho_obs, q_obs, Md_obs, th
     end
     return _restore_shape(rhos, out)
 end
+
+"""
+    quick_data_preparation(rng, m1, m2, z; reweight=true, ...)
+
+Prepare the noisy quick-PE inputs used by `pe_quick_generation_samples`. The
+return value is a named tuple containing source masses, redshifts, projection
+factor `theta`, detected indices, observed SNR, observed mass ratio, observed
+detector-frame chirp mass, and observed projection factor.
+"""
+function quick_data_preparation(rng::AbstractRNG, m1_astro, m2_astro, zmerg_astro; numdet=3, rho_s=9.0,
+    dL_s=1.5, Md_s=25.0, snr_threshold=12.0, fgw_cut=15.0, theta=nothing,
+    reweight::Bool=true, cosmology::AbstractCosmology=PLANCK15_FLATLCDM)
+    if reweight
+        if theta === nothing
+            m1, m2, z = dvc_dz_reweight(rng, m1_astro, m2_astro, zmerg_astro; cosmology)
+            theta_vec = nothing
+        else
+            m1, m2, z, theta_vec = dvc_dz_reweight(rng, m1_astro, m2_astro, zmerg_astro; cosmology, extra=(theta,))
+        end
+    else
+        m1 = _as_vector(m1_astro)
+        m2 = _as_vector(m2_astro)
+        z = _as_vector(zmerg_astro)
+        theta_vec = theta === nothing ? nothing : _as_vector(theta)
+    end
+    length(m1) == length(m2) == length(z) || throw(ArgumentError("m1, m2, and z must have the same length"))
+    if theta_vec !== nothing && length(theta_vec) != length(z)
+        throw(ArgumentError("theta must match z length"))
+    end
+
+    snr = snr_samples_source(rng, m1, m2, z; cosmology, numdet, rho_s, dL_s, Md_s, theta=theta_vec)
+    md = chirp_mass_detector(m1, m2, z)
+    q = mass_ratio.(m1, m2)
+    md_obs, q_obs, theta_obs = noise(rng, md, q, snr.theta, snr.rho_obs)
+    idx_cut = snr_and_freq_cut(m1, m2, z, snr.rho_obs; snr_threshold, fgw_cut)
+    return (mass_1_source=m1, mass_2_source=m2, redshift=z, theta=snr.theta,
+        detected_indices=idx_cut, rho_obs=snr.rho_obs, mass_ratio_obs=q_obs,
+        chirp_mass_detector_obs=md_obs, theta_obs=theta_obs, rho_true=snr.rho_true)
+end
+quick_data_preparation(m1_astro, m2_astro, zmerg_astro; rng=Random.default_rng(), kwargs...) =
+    quick_data_preparation(rng, m1_astro, m2_astro, zmerg_astro; kwargs...)
+
+function _positive_uniform_draws(rng, lo, hi, n, label)
+    hi > lo || throw(ArgumentError("invalid proposal interval for $label"))
+    return rand(rng, Uniform(lo, hi), n)
+end
+
+"""
+    pe_quick_generation_samples(rng, m1, m2, z, theta, idx, rho_obs, q_obs, Md_obs, theta_obs; ...)
+
+Generate quick posterior samples for detected events using the same
+importance-sampling structure as Python `PE_quick_generation_samples`.
+`idx` uses Julia's 1-based indexing. Use the `Ngen` keyword to control the
+proposal pool size; tests and examples should keep it small.
+"""
+function pe_quick_generation_samples(rng::AbstractRNG, m1, m2, z, theta, idx, rho_obs, q_obs, Md_obs, theta_obs;
+    Ninj=5, Nsamp=1000, numdet=3, rho_s=9.0, dL_s=1.5, Md_s=25.0, Ngen=10_000,
+    cosmology::AbstractCosmology=PLANCK15_FLATLCDM)
+    m1v = _as_vector(m1)
+    m2v = _as_vector(m2)
+    zv = _as_vector(z)
+    thetav = _as_vector(theta)
+    rho_obsv = _as_vector(rho_obs)
+    q_obsv = _as_vector(q_obs)
+    md_obsv = _as_vector(Md_obs)
+    theta_obsv = _as_vector(theta_obs)
+    n = length(m1v)
+    all(length(v) == n for v in (m2v, zv, thetav, rho_obsv, q_obsv, md_obsv, theta_obsv)) ||
+        throw(ArgumentError("quick PE input arrays must have the same length"))
+    isempty(idx) && throw(ArgumentError("idx must contain at least one detected event"))
+    chosen = sample(rng, collect(idx), Ninj; replace=true)
+    posterior = Dict{String,NamedTuple}()
+    truth = Dict{String,NamedTuple}()
+
+    dl_all = z_to_dl(zv; cosmology)
+    for i in chosen
+        1 <= i <= n || throw(ArgumentError("idx contains out-of-bounds event index $i"))
+        uncmass = 1.1 * 0.7 / (rho_obsv[i] / 8)
+        m1s = _positive_uniform_draws(rng, max((1 - uncmass) * m1v[i], 0.1), (1 + uncmass) * m1v[i], Ngen, "m1")
+        m2s = _positive_uniform_draws(rng, max((1 - uncmass) * m2v[i], 0.1), (1 + uncmass) * m2v[i], Ngen, "m2")
+        for j in eachindex(m1s)
+            if m1s[j] < m2s[j]
+                m1s[j], m2s[j] = m2s[j], m1s[j]
+            end
+        end
+
+        uncdl = 3 * 1.2 / (rho_obsv[i] / 8)
+        dls = _positive_uniform_draws(rng, max((1 - uncdl) * dl_all[i], 1.0), (1 + uncdl) * dl_all[i], Ngen, "dL")
+        zs = dl_to_z(dls; cosmology)
+        thetas = rand(rng, Uniform(0, 1.4), Ngen)
+        qs = mass_ratio.(m1s, m2s)
+        mds = chirp_mass_detector(m1s, m2s, zs)
+        rhos = snr_samples_source(rng, m1s, m2s, zs; cosmology, numdet, rho_s, dL_s, Md_s, theta=thetas).rho_true
+        prior = (dls .* (1 .+ zs)).^2
+        likelihood_tot = likelihood_evaluation(rhos, qs, mds, thetas, rho_obsv[i], q_obsv[i], md_obsv[i], theta_obsv[i]; numdet) .* prior
+        total = sum(likelihood_tot)
+        total > 0 && isfinite(total) || throw(ArgumentError("quick PE proposal weights are zero or non-finite"))
+        resampled = sample(rng, 1:Ngen, Weights(likelihood_tot ./ total), Nsamp; replace=true)
+        key = string(i)
+        posterior[key] = (mass_1_source=m1s[resampled], mass_2_source=m2s[resampled],
+            redshift=zs[resampled], mass_1=m1s[resampled] .* (1 .+ zs[resampled]),
+            mass_2=m2s[resampled] .* (1 .+ zs[resampled]), chirp_mass_detector=mds[resampled],
+            mass_ratio=qs[resampled], rho=rhos[resampled], luminosity_distance=dls[resampled],
+            theta=thetas[resampled])
+        truth[key] = (mass_1_source=m1v[i], mass_2_source=m2v[i], redshift=zv[i],
+            mass_1=m1v[i] * (1 + zv[i]), mass_2=m2v[i] * (1 + zv[i]),
+            chirp_mass_detector=chirp_mass_detector(m1v[i], m2v[i], zv[i]),
+            mass_ratio=mass_ratio(m1v[i], m2v[i]), luminosity_distance=dl_all[i], theta=thetav[i])
+    end
+    return (posterior_samples=posterior, truth=truth, indices=chosen)
+end
+pe_quick_generation_samples(m1, m2, z, theta, idx, rho_obs, q_obs, Md_obs, theta_obs; rng=Random.default_rng(), kwargs...) =
+    pe_quick_generation_samples(rng, m1, m2, z, theta, idx, rho_obs, q_obs, Md_obs, theta_obs; kwargs...)
+const PE_quick_generation_samples = pe_quick_generation_samples
 
 """
     generate_posterior_samples(rng, truth; nsamples=256, frac_mass_sigma=0.08, frac_dl_sigma=0.15)

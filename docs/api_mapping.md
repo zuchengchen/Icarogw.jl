@@ -134,7 +134,7 @@ Status meanings:
 | quick PE generation | `generate_posterior_samples` | implemented/renamed | Toy posteriors. |
 | injection generation | `generate_injections` | implemented/renamed | Native injection set. |
 | end-to-end mock data | `simulate_population_data` | implemented | Used by tests/examples. |
-| `quick_data_preparation`, `PE_quick_generation_samples` | native workflow pieces | partial | Large rejection/resampling workflow intentionally decomposed; full parity still open. |
+| `quick_data_preparation`, `PE_quick_generation_samples` | `quick_data_preparation`, `pe_quick_generation_samples`, `PE_quick_generation_samples` | implemented/renamed | RNG-explicit native quick-prep and PE resampling workflow; `Ngen` controls proposal size. |
 
 ## catalog.py, stochastic.py, omega_gw.py, utils.py, cupy_pal.py
 

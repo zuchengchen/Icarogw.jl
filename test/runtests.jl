@@ -328,6 +328,22 @@ end
     @test z_to_dl(0.2) > 0
     @test dl_to_z(z_to_dl(0.2)) ≈ 0.2 rtol=1e-8
     @test dvc_dz_fullsky(0.2) > 0
+
+    m1_rw, m2_rw, z_rw, labels_rw = dvc_dz_reweight(MersenneTwister(8), [20.0, 30.0, 40.0], [10.0, 15.0, 20.0],
+        [0.1, 0.2, 0.3]; extra=([1.0, 2.0, 3.0],))
+    @test length(m1_rw) == length(m2_rw) == length(z_rw) == length(labels_rw) == 3
+    @test all(in([1.0, 2.0, 3.0]), labels_rw)
+
+    prep = quick_data_preparation(MersenneTwister(9), [30.0, 35.0, 40.0], [20.0, 24.0, 30.0], [0.1, 0.12, 0.14];
+        theta=[0.8, 0.9, 1.0], reweight=false, snr_threshold=0.0, fgw_cut=0.0)
+    @test prep.detected_indices == [1, 2, 3]
+    @test length(prep.rho_obs) == 3
+    pe = pe_quick_generation_samples(MersenneTwister(10), prep.mass_1_source, prep.mass_2_source, prep.redshift,
+        prep.theta, prep.detected_indices, prep.rho_obs, prep.mass_ratio_obs, prep.chirp_mass_detector_obs,
+        prep.theta_obs; Ninj=2, Nsamp=5, Ngen=80)
+    @test length(pe.indices) == 2
+    @test length(pe.posterior_samples[string(first(pe.indices))].mass_1_source) == 5
+    @test PE_quick_generation_samples === pe_quick_generation_samples
 end
 
 @testset "utility helpers" begin

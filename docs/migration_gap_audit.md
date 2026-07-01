@@ -66,10 +66,10 @@ complete until the final review checklist proves full scientific coverage.
   extended spin families, are implemented with fixture coverage. Dip/bin/Farah
   wrapper compositions remain.
 - `simulation.py`: detector/source-frame SNR helpers, measurement-noise
-  helpers, flat-SNR scaling, deterministic quick likelihood factors, and
-  frequency/SNR cuts are implemented with fixture coverage. The large
-  `quick_data_preparation` and `PE_quick_generation_samples` resampling
-  workflows still need a Julia-native tutorial-level design.
+  helpers, flat-SNR scaling, deterministic quick likelihood factors,
+  frequency/SNR cuts, quick data preparation, and quick PE resampling are
+  implemented with fixture or unit-test coverage. Python mass-model injection
+  wrapper generation remains broader than the current native generator.
 - `utils.py` and `cupy_pal.py`: non-Condor validation helper and CPU bounds
   helpers are implemented. Condor and GPU switching remain excluded.
 
