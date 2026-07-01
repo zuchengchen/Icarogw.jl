@@ -72,9 +72,9 @@ complete until the final review checklist proves full scientific coverage.
   weight functions.
 - `simulation.py`: detector/source-frame SNR helpers, measurement-noise
   helpers, flat-SNR scaling, deterministic quick likelihood factors,
-  frequency/SNR cuts, quick data preparation, and quick PE resampling are
-  implemented with fixture or unit-test coverage. Python mass-model injection
-  wrapper generation remains broader than the current native generator.
+  frequency/SNR cuts, mass/distance proposal generators, Python-style
+  injection-set generation, quick data preparation, and quick PE resampling are
+  implemented with fixture or unit-test coverage.
 - `utils.py` and `cupy_pal.py`: non-Condor validation helper and CPU bounds
   helpers are implemented. Condor and GPU switching remain excluded.
 

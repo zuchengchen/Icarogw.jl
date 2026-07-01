@@ -29,6 +29,12 @@ export simulate_sources,
     snr_and_freq_cut,
     snr_cut_flat,
     likelihood_evaluation,
+    generate_mass_inj,
+    generate_single_mass_inj,
+    generate_dL_inj,
+    generate_dL_inj_uniform,
+    generate_dL_inj_z_uniform,
+    injection_set_generator,
     quick_data_preparation,
     pe_quick_generation_samples,
     PE_quick_generation_samples,
@@ -294,6 +300,179 @@ function likelihood_evaluation(rhos, qs, Mds, thetas, rho_obs, q_obs, Md_obs, th
     end
     return _restore_shape(rhos, out)
 end
+
+_require_key(params, key) = haskey(params, key) ? params[key] : throw(ArgumentError("missing mass-model parameter $key"))
+_mass_param(params, key) = float(_require_key(params, key))
+
+function _mass_distribution_from_python_name(mass_model::AbstractString, params)
+    if mass_model == "PowerLaw"
+        mmin = _mass_param(params, :mmin)
+        mmax = _mass_param(params, :mmax)
+        return ConditionalMassDistribution(PowerLaw(mmin, mmax, -_mass_param(params, :alpha)),
+            PowerLaw(mmin, mmax, _mass_param(params, :beta)))
+    elseif mass_model == "PowerLawPeak"
+        mmin = _mass_param(params, :mmin)
+        mmax = _mass_param(params, :mmax)
+        mu_g = _mass_param(params, :mu_g)
+        sigma_g = _mass_param(params, :sigma_g)
+        primary = PowerLawGaussian(mmin, mmax, -_mass_param(params, :alpha),
+            _mass_param(params, :lambda_peak), mu_g, sigma_g, mmin, mu_g + 5sigma_g)
+        return ConditionalMassDistribution(primary, PowerLaw(mmin, mmax, _mass_param(params, :beta)))
+    elseif mass_model == "MultiPeak"
+        mmin = _mass_param(params, :mmin)
+        mmax = _mass_param(params, :mmax)
+        mu_low = _mass_param(params, :mu_g_low)
+        sigma_low = _mass_param(params, :sigma_g_low)
+        mu_high = _mass_param(params, :mu_g_high)
+        sigma_high = _mass_param(params, :sigma_g_high)
+        primary = PowerLawTwoGaussians(mmin, mmax, -_mass_param(params, :alpha),
+            _mass_param(params, :lambda_g), _mass_param(params, :lambda_g_low),
+            mu_low, sigma_low, mmin, mu_low + 5sigma_low,
+            mu_high, sigma_high, mmin, mu_high + 5sigma_high)
+        return ConditionalMassDistribution(primary, PowerLaw(mmin, mmax, _mass_param(params, :beta)))
+    else
+        throw(ArgumentError("unsupported mass_model $mass_model; choose PowerLaw, PowerLawPeak, or MultiPeak"))
+    end
+end
+
+"""
+    generate_mass_inj(rng, n, mass_model, params)
+
+Generate source-frame `(m1, m2)` samples and proposal densities for Python
+`simulation.generate_mass_inj` mass models: `"PowerLaw"`, `"PowerLawPeak"`,
+and `"MultiPeak"`. Parameters may be a `NamedTuple` or dictionary with symbol
+keys matching the Python names.
+"""
+function generate_mass_inj(rng::AbstractRNG, n::Integer, mass_model::AbstractString, params)
+    prior = _mass_distribution_from_python_name(mass_model, params)
+    m1, m2 = rand_prior(rng, prior, n)
+    density = Priors.pdf(prior, m1, m2)
+    return (mass_1_source=m1, mass_2_source=m2, prior=density, distribution=prior)
+end
+generate_mass_inj(n::Integer, mass_model::AbstractString, params; rng=Random.default_rng()) =
+    generate_mass_inj(rng, n, mass_model, params)
+
+"""
+    generate_single_mass_inj(rng, n, "PowerLaw", params)
+
+Generate one-dimensional source masses and proposal densities for Python
+`generate_single_mass_inj`.
+"""
+function generate_single_mass_inj(rng::AbstractRNG, n::Integer, mass_model::AbstractString, params)
+    mass_model == "PowerLaw" || throw(ArgumentError("generate_single_mass_inj currently supports only PowerLaw"))
+    prior = PowerLaw(_mass_param(params, :mmin), _mass_param(params, :mmax), -_mass_param(params, :alpha))
+    mass = rand_prior(rng, prior, n)
+    return (mass_source=mass, prior=Priors.pdf(prior, mass), distribution=prior)
+end
+generate_single_mass_inj(n::Integer, mass_model::AbstractString, params; rng=Random.default_rng()) =
+    generate_single_mass_inj(rng, n, mass_model, params)
+
+"""
+    generate_dL_inj(rng, n, zmax; cosmology=PLANCK15_FLATLCDM)
+
+Draw luminosity distances with Python's `powerlaw(a=3, loc=0.1,
+scale=dL(zmax)-10)` proposal and return distances plus proposal densities.
+"""
+function generate_dL_inj(rng::AbstractRNG, n::Integer, zmax::Real; cosmology::AbstractCosmology=PLANCK15_FLATLCDM)
+    beta = z_to_dl(zmax; cosmology)
+    scale = beta - 10.0
+    scale > 0 || throw(ArgumentError("zmax gives an invalid Python dL proposal scale"))
+    u = rand(rng, n)
+    dL = 0.1 .+ scale .* u .^ (1 / 3)
+    density = 3 .* ((dL .- 0.1) ./ scale) .^ 2 ./ scale
+    return (luminosity_distance=dL, prior=density)
+end
+generate_dL_inj(n::Integer, zmax::Real; rng=Random.default_rng(), kwargs...) =
+    generate_dL_inj(rng, n, zmax; kwargs...)
+
+"""
+    generate_dL_inj_uniform(rng, n, zmax; cosmology=PLANCK15_FLATLCDM)
+
+Uniform luminosity-distance proposal matching Python
+`generate_dL_inj_uniform`.
+"""
+function generate_dL_inj_uniform(rng::AbstractRNG, n::Integer, zmax::Real; cosmology::AbstractCosmology=PLANCK15_FLATLCDM)
+    scale = z_to_dl(zmax; cosmology)
+    scale > 0 || throw(ArgumentError("zmax gives an invalid uniform dL proposal scale"))
+    dL = 0.1 .+ scale .* rand(rng, n)
+    return (luminosity_distance=dL, prior=fill(1 / scale, n))
+end
+generate_dL_inj_uniform(n::Integer, zmax::Real; rng=Random.default_rng(), kwargs...) =
+    generate_dL_inj_uniform(rng, n, zmax; kwargs...)
+
+"""
+    generate_dL_inj_z_uniform(rng, n, zmax; cosmology=PLANCK15_FLATLCDM)
+
+Uniform-redshift proposal returned in luminosity distance, with density
+converted by `ddL/dz`, matching Python `generate_dL_inj_z_uniform`.
+"""
+function generate_dL_inj_z_uniform(rng::AbstractRNG, n::Integer, zmax::Real; cosmology::AbstractCosmology=PLANCK15_FLATLCDM)
+    z = 0.1 .+ zmax .* rand(rng, n)
+    dL = z_to_dl(z; cosmology)
+    prior = fill(1 / zmax, n) ./ ddl_dz(cosmology, z)
+    return (luminosity_distance=dL, redshift=z, prior=prior)
+end
+generate_dL_inj_z_uniform(n::Integer, zmax::Real; rng=Random.default_rng(), kwargs...) =
+    generate_dL_inj_z_uniform(rng, n, zmax; kwargs...)
+
+"""
+    injection_set_generator(rng, Ninj, Ntot, mass_model, params; ...)
+
+Julia-native equivalent of Python `simulation.injection_set_generator`. It
+keeps drawing batches of `Ntot` trial injections until at least `Ninj` pass the
+SNR/frequency cuts, then returns source and detector-frame truth columns,
+proposal priors, counts, and an `InjectionSet` ready for likelihood code.
+"""
+function injection_set_generator(rng::AbstractRNG, Ninj::Integer, Ntot::Integer, mass_model::AbstractString, params;
+    zmax=5.0, snrthr=12.0, snr_threshold=snrthr, fgw_cut=15.0, numdet=3, rho_s=9.0,
+    dL_s=1.5, Md_s=25.0, theta=nothing, Tobs=1.0, cosmology::AbstractCosmology=PLANCK15_FLATLCDM)
+    Ninj > 0 && Ntot > 0 || throw(ArgumentError("Ninj and Ntot must be positive"))
+    m1s_all = Float64[]
+    m2s_all = Float64[]
+    z_all = Float64[]
+    snr_true_all = Float64[]
+    m1d_all = Float64[]
+    m2d_all = Float64[]
+    dL_all = Float64[]
+    prior_all = Float64[]
+    generated = 0
+
+    while length(m1s_all) < Ninj
+        mass_draw = generate_mass_inj(rng, Ntot, mass_model, params)
+        distance_draw = generate_dL_inj(rng, Ntot, zmax; cosmology)
+        z_draw = dl_to_z(distance_draw.luminosity_distance; cosmology)
+        prior = mass_draw.prior .* distance_draw.prior .* (1 .+ z_draw) .^ (-2)
+        theta_batch = theta === nothing ? nothing : _as_vector(theta)
+        if theta_batch !== nothing && length(theta_batch) != Ntot
+            throw(ArgumentError("theta must have length Ntot when supplied to injection_set_generator"))
+        end
+        snr = snr_samples_source(rng, mass_draw.mass_1_source, mass_draw.mass_2_source, z_draw;
+            cosmology, numdet, rho_s, dL_s, Md_s, theta=theta_batch)
+        idx = snr_and_freq_cut(mass_draw.mass_1_source, mass_draw.mass_2_source, z_draw, snr.rho_obs;
+            snr_threshold, fgw_cut)
+        m1d = mass_draw.mass_1_source[idx] .* (1 .+ z_draw[idx])
+        m2d = mass_draw.mass_2_source[idx] .* (1 .+ z_draw[idx])
+        append!(m1s_all, mass_draw.mass_1_source[idx])
+        append!(m2s_all, mass_draw.mass_2_source[idx])
+        append!(z_all, z_draw[idx])
+        append!(snr_true_all, snr.rho_true[idx])
+        append!(m1d_all, m1d)
+        append!(m2d_all, m2d)
+        append!(dL_all, distance_draw.luminosity_distance[idx])
+        append!(prior_all, prior[idx])
+        generated += Ntot
+    end
+
+    keep = 1:Ninj
+    injections = InjectionSet((mass_1=m1d_all[keep], mass_2=m2d_all[keep],
+        luminosity_distance=dL_all[keep], prior=prior_all[keep]); ntotal=generated, Tobs)
+    return (mass_1_source=m1s_all[keep], mass_2_source=m2s_all[keep], redshift=z_all[keep],
+        snr=snr_true_all[keep], mass_1=m1d_all[keep], mass_2=m2d_all[keep],
+        luminosity_distance=dL_all[keep], prior=prior_all[keep],
+        ntotal_generated=generated, ndetected=length(m1s_all), injections=injections)
+end
+injection_set_generator(Ninj::Integer, Ntot::Integer, mass_model::AbstractString, params; rng=Random.default_rng(), kwargs...) =
+    injection_set_generator(rng, Ninj, Ntot, mass_model, params; kwargs...)
 
 """
     quick_data_preparation(rng, m1, m2, z; reweight=true, ...)

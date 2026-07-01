@@ -107,7 +107,9 @@ inside likelihood loops. Further performance work should focus on:
 - Schechter luminosity-function normalization uses direct quadrature instead
   of Python's incomplete-gamma branch for negative `alpha + 1` values.
 - The simulation helpers are quick, seeded mock-data tools rather than full
-  detector simulations.
+  detector simulations. Python-style `injection_set_generator` support is
+  exposed as an RNG-explicit helper and returns native `InjectionSet` data
+  alongside the Python-style truth columns.
 - Python wrapper classes are represented by composable Julia structs rather
   than one mutable class per model family.
 

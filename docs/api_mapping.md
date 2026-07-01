@@ -138,7 +138,8 @@ Status meanings:
 | SNR helpers | `snr_samples`, `snr_samples_source`, `snr_samples_detector`, `snr_samples_flat`, `apply_snr_cut`, `snr_and_freq_cut`, `snr_cut_flat` | implemented/renamed | Smoke-test approximation; random draws are RNG-explicit. |
 | measurement noise and quick likelihood | `chirp_mass_noise`, `mass_ratio_noise`, `theta_noise`, `noise`, `likelihood_evaluation` | implemented/renamed | Formula fixture covers deterministic likelihood factors. |
 | quick PE generation | `generate_posterior_samples` | implemented/renamed | Toy posteriors. |
-| injection generation | `generate_injections` | implemented/renamed | Native injection set. |
+| `generate_mass_inj`, `generate_single_mass_inj`, `generate_dL_inj*`, `injection_set_generator` | same names plus `generate_injections` | implemented/renamed | RNG-explicit mass/distance proposal draws and Python-style injection-set generator; returns an `InjectionSet` for native likelihoods. |
+| injection generation | `generate_injections` | implemented/renamed | Native population-model injection set. |
 | end-to-end mock data | `simulate_population_data` | implemented | Used by tests/examples. |
 | `quick_data_preparation`, `PE_quick_generation_samples` | `quick_data_preparation`, `pe_quick_generation_samples`, `PE_quick_generation_samples` | implemented/renamed | RNG-explicit native quick-prep and PE resampling workflow; `Ngen` controls proposal size. |
 

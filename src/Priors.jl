@@ -232,6 +232,13 @@ function logpdf(p::PowerLawGaussian, x::Real)
     return logaddexp(a, b)
 end
 cdf(p::PowerLawGaussian, x::Real) = (1 - p.lambda) * cdf(p.pl, x) + p.lambda * cdf(p.gauss, x)
+function rand_prior(rng::AbstractRNG, p::PowerLawGaussian, n::Integer)
+    out = Vector{Float64}(undef, n)
+    for i in eachindex(out)
+        out[i] = rand(rng) < p.lambda ? rand_prior(rng, p.gauss, 1)[1] : rand_prior(rng, p.pl, 1)[1]
+    end
+    return out
+end
 
 """
     BrokenPowerLaw(min, max, alpha1, alpha2, b)
@@ -265,6 +272,14 @@ function cdf(p::BrokenPowerLaw, x::Real)
     x >= p.max && return 1.0
     return (cdf(p.pl1, x) + p.ratio * cdf(p.pl2, x)) / p.norm
 end
+function rand_prior(rng::AbstractRNG, p::BrokenPowerLaw, n::Integer)
+    out = Vector{Float64}(undef, n)
+    w2 = p.ratio / p.norm
+    for i in eachindex(out)
+        out[i] = rand(rng) < w2 ? rand_prior(rng, p.pl2, 1)[1] : rand_prior(rng, p.pl1, 1)[1]
+    end
+    return out
+end
 
 """
     PowerLawTwoGaussians(...)
@@ -296,6 +311,17 @@ function logpdf(p::PowerLawTwoGaussians, x::Real)
 end
 cdf(p::PowerLawTwoGaussians, x::Real) =
     (1 - p.lambda) * cdf(p.pl, x) + p.lambda * (p.lambda_low * cdf(p.glow, x) + (1 - p.lambda_low) * cdf(p.ghigh, x))
+function rand_prior(rng::AbstractRNG, p::PowerLawTwoGaussians, n::Integer)
+    out = Vector{Float64}(undef, n)
+    for i in eachindex(out)
+        if rand(rng) < 1 - p.lambda
+            out[i] = rand_prior(rng, p.pl, 1)[1]
+        else
+            out[i] = rand(rng) < p.lambda_low ? rand_prior(rng, p.glow, 1)[1] : rand_prior(rng, p.ghigh, 1)[1]
+        end
+    end
+    return out
+end
 
 """
     BrokenPowerLawMultiPeak(...)
@@ -330,6 +356,17 @@ function logpdf(p::BrokenPowerLawMultiPeak, x::Real)
 end
 cdf(p::BrokenPowerLawMultiPeak, x::Real) =
     (1 - p.lambda) * cdf(p.bpl, x) + p.lambda * (p.lambda_low * cdf(p.glow, x) + (1 - p.lambda_low) * cdf(p.ghigh, x))
+function rand_prior(rng::AbstractRNG, p::BrokenPowerLawMultiPeak, n::Integer)
+    out = Vector{Float64}(undef, n)
+    for i in eachindex(out)
+        if rand(rng) < 1 - p.lambda
+            out[i] = rand_prior(rng, p.bpl, 1)[1]
+        else
+            out[i] = rand(rng) < p.lambda_low ? rand_prior(rng, p.glow, 1)[1] : rand_prior(rng, p.ghigh, 1)[1]
+        end
+    end
+    return out
+end
 
 """
     BrokenPowerLawTripleMultiPeak(...)
@@ -369,6 +406,21 @@ end
 cdf(p::BrokenPowerLawTripleMultiPeak, x::Real) =
     (1 - p.lambda) * cdf(p.bpl, x) +
     p.lambda * (p.lambda1 * cdf(p.g1, x) + (1 - p.lambda1) * (p.lambda2 * cdf(p.g2, x) + (1 - p.lambda2) * cdf(p.g3, x)))
+function rand_prior(rng::AbstractRNG, p::BrokenPowerLawTripleMultiPeak, n::Integer)
+    out = Vector{Float64}(undef, n)
+    for i in eachindex(out)
+        if rand(rng) < 1 - p.lambda
+            out[i] = rand_prior(rng, p.bpl, 1)[1]
+        elseif rand(rng) < p.lambda1
+            out[i] = rand_prior(rng, p.g1, 1)[1]
+        elseif rand(rng) < p.lambda2
+            out[i] = rand_prior(rng, p.g2, 1)[1]
+        else
+            out[i] = rand_prior(rng, p.g3, 1)[1]
+        end
+    end
+    return out
+end
 
 """
     ConditionalMassDistribution(primary, secondary)

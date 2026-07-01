@@ -413,6 +413,34 @@ end
     @test dl_to_z(z_to_dl(0.2)) ≈ 0.2 rtol=1e-8
     @test dvc_dz_fullsky(0.2) > 0
 
+    mass_params = (alpha=2.0, beta=1.0, mmin=5.0, mmax=50.0)
+    mass_draw = generate_mass_inj(MersenneTwister(11), 12, "PowerLaw", mass_params)
+    @test length(mass_draw.mass_1_source) == 12
+    @test all(mass_draw.mass_1_source .>= mass_draw.mass_2_source)
+    @test all(>(0), mass_draw.prior)
+    single_draw = generate_single_mass_inj(MersenneTwister(12), 8, "PowerLaw", mass_params)
+    @test length(single_draw.mass_source) == 8
+    @test all(5.0 .<= single_draw.mass_source .<= 50.0)
+    peak_draw = generate_mass_inj(MersenneTwister(13), 6, "PowerLawPeak",
+        (alpha=2.0, beta=1.0, mmin=5.0, mmax=50.0, mu_g=30.0, sigma_g=3.0, lambda_peak=0.2))
+    @test length(peak_draw.prior) == 6
+    multi_draw = generate_mass_inj(MersenneTwister(14), 6, "MultiPeak",
+        (alpha=2.0, beta=1.0, mmin=5.0, mmax=50.0, mu_g_low=12.0, sigma_g_low=1.5,
+            lambda_g_low=0.4, mu_g_high=35.0, sigma_g_high=3.0, lambda_g=0.2))
+    @test length(multi_draw.prior) == 6
+    dL_powerlaw = generate_dL_inj(MersenneTwister(15), 10, 0.5)
+    @test length(dL_powerlaw.luminosity_distance) == 10
+    @test all(>(0), dL_powerlaw.prior)
+    @test length(generate_dL_inj_uniform(MersenneTwister(16), 5, 0.5).prior) == 5
+    @test length(generate_dL_inj_z_uniform(MersenneTwister(17), 5, 0.5).redshift) == 5
+    generated_inj = injection_set_generator(MersenneTwister(18), 4, 16, "PowerLaw", mass_params;
+        zmax=0.5, snr_threshold=0.0, fgw_cut=0.0)
+    @test length(generated_inj.prior) == 4
+    @test generated_inj.ntotal_generated >= 16
+    @test generated_inj.ndetected >= 4
+    @test generated_inj.injections isa InjectionSet
+    @test length(generated_inj.injections.prior) == 4
+
     m1_rw, m2_rw, z_rw, labels_rw = dvc_dz_reweight(MersenneTwister(8), [20.0, 30.0, 40.0], [10.0, 15.0, 20.0],
         [0.1, 0.2, 0.3]; extra=([1.0, 2.0, 3.0],))
     @test length(m1_rw) == length(m2_rw) == length(z_rw) == length(labels_rw) == 3
