@@ -44,13 +44,13 @@ complete until the final review checklist proves full scientific coverage.
 
 ## Current Largest Gaps
 
-- `catalog.py`: complete pixelated catalog preparation, `galaxy_catalog`,
-  EM counterpart rates, and GW/EM workflow integration. The
-  `IcarogwCatalog` and `GwcosmoCatalog` runtime HDF5 readers now cover
-  NUNIQ/HEALPix lookup, magnitude thresholds, sky-dependent and averaged
-  effective galaxy interpolants, and empty-catalog mode; k-corrections,
-  Schechter luminosity functions, absolute-magnitude rates, and EM redshift
-  helpers are also implemented separately.
+- `catalog.py`: complete pixelated catalog preparation, EM counterpart rates,
+  and GW/EM workflow integration. The `IcarogwCatalog`, `GwcosmoCatalog`, and
+  single-file `GalaxyCatalog` runtime HDF5 readers now cover NUNIQ/HEALPix or
+  stored-pixel lookup, magnitude thresholds, sky-dependent and averaged
+  effective galaxy interpolants, counts maps, and empty-catalog mode;
+  k-corrections, Schechter luminosity functions, absolute-magnitude rates, and
+  EM redshift helpers are also implemented separately.
 - `stochastic.py` and `omega_gw.py`: duplicated `dEdf`, omega-weight, and
   spectral-siren logic is unified in Julia through deterministic
   energy-spectrum, vanilla spectral-siren, Gaussian stochastic-only, simple

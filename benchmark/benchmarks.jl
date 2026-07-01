@@ -78,6 +78,33 @@ display(@benchmark effective_galaxy_number_interpolant($catalog_runtime, $catalo
 display(@benchmark event_logweights($catalog_rate, PosteriorSamples((mass_1=$catalog_m1d, mass_2=$catalog_m2d,
     luminosity_distance=$catalog_dl, sky_indices=$catalog_rows, prior=ones(length($catalog_z))))))
 
+galaxy_dir = mktempdir()
+galaxy_path = joinpath(galaxy_dir, "galaxy_catalog.h5")
+galaxy_ra = collect(range(0.0, 2pi; length=24))
+galaxy_dec = collect(range(-0.8, 0.8; length=24))
+galaxy_zobs = collect(range(0.03, 0.28; length=24))
+galaxy_mag = collect(range(12.0, 15.0; length=24))
+galaxy_interp_z = collect(range(0.05, 0.3; length=12))
+galaxy_npix = 12
+create_hdf5(galaxy_path, (ra=galaxy_ra, dec=galaxy_dec, z=galaxy_zobs,
+    sigmaz=fill(0.01, length(galaxy_ra)), m=galaxy_mag), "K", 1)
+calculate_mthr!(galaxy_path; mthr_percentile=75)
+h5open(galaxy_path, "r+") do h
+    interp = create_group(h["catalog"], "dNgal_dzdOm_interpolant")
+    attrs(interp)["epsilon"] = 0.8
+    write(interp, "z_grid", galaxy_interp_z)
+    for pix in 0:(galaxy_npix - 1)
+        write(interp, "vals_pixel_$pix", log.([10.0 * iz + pix + 1 for iz in 1:length(galaxy_interp_z)]))
+    end
+end
+galaxy_runtime = GalaxyCatalog(galaxy_path; cosmology=catalog_cosmology, epsilon=0.8)
+galaxy_rows = galaxy_runtime.sky_indices[1:length(catalog_z)]
+
+println("galaxy catalog runtime")
+display(@benchmark GalaxyCatalog($galaxy_path; cosmology=$catalog_cosmology, epsilon=0.8))
+display(@benchmark return_counts_map($galaxy_runtime))
+display(@benchmark effective_galaxy_number_interpolant($galaxy_runtime, $catalog_z, $galaxy_rows, $catalog_cosmology; average=true))
+
 ra = collect(range(0.0, 2pi; length=64))
 dec = collect(range(-1.0, 1.0; length=64))
 skymap_nside = 4

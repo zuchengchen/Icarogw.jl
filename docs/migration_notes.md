@@ -80,8 +80,16 @@ also native Julia. `KCorrection` and `DeprecatedKCorrection` cover Python
 redshift likelihood-prior helper for `uniform`, `gaussian`, and
 `gaussian_nocom` modes. The first FITS/HEALPix/NUNIQ skymap core and the
 Python-compatible `IcarogwCatalog`/`GwcosmoCatalog` runtime HDF5 readers now
-exist; full catalog workflows still need preprocessing builders,
-`galaxy_catalog`, and EM counterpart rate/likelihood integration.
+exist.
+
+`GalaxyCatalog` provides a lightweight compatibility layer for Python
+`galaxy_catalog` single-file HDF5 products. `create_hdf5` writes the `/catalog`
+group with Python-style zero-based stored `sky_indices`; the Julia reader
+converts those pixels to 1-based rows internally. `calculate_mthr!`,
+`return_counts_map`, `calc_mthr`, and `effective_galaxy_number_interpolant`
+cover the runtime threshold-map, empty-catalog, and effective-count paths.
+Long-running pixelated catalog preprocessing builders and EM counterpart
+rate/likelihood integration remain open catalog workflow gaps.
 
 ## Model Composition
 

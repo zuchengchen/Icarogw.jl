@@ -4,6 +4,7 @@ using DataFrames
 using FITSIO
 using HDF5
 using Random
+using Statistics: mean
 using Test
 
 _truthy(x) = x isa Bool ? x : lowercase(String(x)) == "true"
@@ -227,6 +228,60 @@ end
         make_me_empty!(catalog)
         @test catalog.dNgal_dzdOm_vals_av ≈ pz_empty
         @test all(catalog.dNgal_dzdOm_vals[:, j] ≈ pz_empty for j in axes(catalog.dNgal_dzdOm_vals, 2))
+    end
+
+    mktempdir() do dir
+        path = joinpath(dir, "galaxy_catalog.h5")
+        ra = [0.2, 1.0, 1.1, Inf]
+        dec = [0.1, -0.1, -0.12, 0.0]
+        z = [0.1, 0.2, 0.22, 0.3]
+        sigmaz = [0.01, 0.02, 0.03, 0.04]
+        mag = [12.0, 13.0, 14.0, 15.0]
+        create_hdf5(path, (ra=ra, dec=dec, z=z, sigmaz=sigmaz, m=mag), "K", 1)
+        catalog = GalaxyCatalog(path; epsilon=0.8)
+        @test galaxy_catalog === GalaxyCatalog
+        @test load_hdf5 === GalaxyCatalog
+        @test catalog.band == "K"
+        @test catalog.npixels == 12
+        @test length(catalog.ra) == 3
+        @test catalog.sky_indices == radec2indeces(ra[1:3], dec[1:3], 1)
+        @test sum(return_counts_map(catalog)) == 3
+
+        catalog_mthr = calculate_mthr!(path; mthr_percentile=50)
+        @test catalog_mthr.mthr_map !== nothing
+        @test length(catalog_mthr.mthr_map) == catalog_mthr.npixels
+        @test length(catalog_mthr.m) == 2
+        @test calc_mthr(catalog_mthr, 0.2, catalog_mthr.sky_indices[1], catalog_cosmology; dl=100.0) ≈
+              absolute_magnitude(catalog_mthr.mthr_map[catalog_mthr.sky_indices[1]], 100.0,
+                  DeprecatedKCorrection("K")(0.2))
+
+        h5open(path, "r+") do h
+            group = h["catalog"]
+            interp = create_group(group, "dNgal_dzdOm_interpolant")
+            attrs(interp)["epsilon"] = 0.8
+            write(interp, "z_grid", z_grid)
+            for pix in 0:(catalog_mthr.npixels - 1)
+                values = [10.0 * iz + pix + 1 for iz in 1:length(z_grid)]
+                write(interp, "vals_pixel_$pix", log.(values))
+            end
+        end
+        catalog_loaded = GalaxyCatalog(path; cosmology=catalog_cosmology)
+        row = catalog_loaded.sky_indices[1]
+        gc, bg = effective_galaxy_number_interpolant(catalog_loaded, 0.2, row, catalog_cosmology; dl=100.0)
+        @test gc ≈ 20.0 + row
+        @test bg >= 0.0
+        gc_av, _ = effective_galaxy_number_interpolant(catalog_loaded, 0.2, row, catalog_cosmology; average=true, dl=100.0)
+        @test gc_av ≈ mean([20.0 + pix for pix in 1:catalog_loaded.npixels])
+
+        empty_path = joinpath(dir, "galaxy_empty.h5")
+        create_hdf5(empty_path, (ra=ra[1:3], dec=dec[1:3], z=z[1:3], sigmaz=sigmaz[1:3], m=mag[1:3]), "K", 1)
+        empty_catalog = calculate_mthr!(empty_path; mthr_percentile="empty")
+        empty_loaded = GalaxyCatalog(empty_path; cosmology=catalog_cosmology, epsilon=0.8)
+        @test empty_catalog.mthr_empty
+        @test empty_loaded.mthr_empty
+        gc_empty, bg_empty = effective_galaxy_number_interpolant(empty_loaded, 0.2, 1, catalog_cosmology)
+        @test gc_empty == 0.0
+        @test bg_empty > 0.0
     end
 end
 

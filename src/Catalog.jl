@@ -2,7 +2,7 @@ module Catalog
 
 using ..Cosmology
 using ..Conversions
-using ..SkyMaps: MOCMap, radec2indeces
+using ..SkyMaps: MOCMap, indices2radec, radec2indeces
 using HDF5
 using QuadGK
 using Random
@@ -19,8 +19,14 @@ import ..Cosmology: background_effective_galaxy_density,
 export LegacyGalaxyLuminosityFunction,
     IcarogwCatalog,
     GwcosmoCatalog,
+    GalaxyCatalog,
     icarogw_catalog,
     gwcosmo_catalog,
+    galaxy_catalog,
+    create_hdf5,
+    load_hdf5,
+    calculate_mthr!,
+    return_counts_map,
     galaxy_MF_dep,
     KCorrection,
     DeprecatedKCorrection,
@@ -653,6 +659,279 @@ function make_me_empty!(c::GwcosmoCatalog)
         c.dNgal_dzdOm_vals[:, j] .= c.pz_empty
     end
     return c
+end
+
+function _read_optional_dataset(group, name::AbstractString)
+    return haskey(group, name) ? Float64.(read(group, name)) : Float64[]
+end
+
+function _read_optional_int_dataset(group, name::AbstractString)
+    return haskey(group, name) ? Int.(read(group, name)) : Int[]
+end
+
+function _read_galaxy_interpolant(group, npix::Integer)
+    haskey(group, "dNgal_dzdOm_interpolant") || return nothing
+    interp = group["dNgal_dzdOm_interpolant"]
+    z_grid = Float64.(read(interp, "z_grid"))
+    vals = Matrix{Float64}(undef, length(z_grid), npix)
+    for pix in 0:(npix - 1)
+        name = "vals_pixel_$pix"
+        raw = Float64.(read(interp, name))
+        length(raw) == length(z_grid) || throw(ArgumentError("dataset $name length $(length(raw)) does not match z_grid length $(length(z_grid))"))
+        vals[:, pix + 1] = exp.(replace(raw, NaN => -Inf))
+    end
+    return z_grid, vals
+end
+
+function _legacy_or_modern_lf(band::AbstractString, cosmology::Cosmology.AbstractCosmology; epsilon=nothing)
+    return band in _LEGACY_GALAXY_BANDS ?
+        LegacyGalaxyLuminosityFunction(band; cosmology, epsilon) :
+        Cosmology.GalaxyLuminosityFunction(band; cosmology)
+end
+
+function _legacy_or_modern_background(lf, mthr, z, rate)
+    if lf isa LegacyGalaxyLuminosityFunction
+        return background_effective_galaxy_density(lf, mthr)
+    else
+        return background_effective_galaxy_density(lf, mthr, z, rate)
+    end
+end
+
+"""
+    GalaxyCatalog(path; cosmology=FlatLambdaCDM(), epsilon=nothing)
+    load_hdf5(path; cosmology=FlatLambdaCDM(), epsilon=nothing)
+
+Runtime reader for Python `galaxy_catalog` single-file HDF5 catalogs. It reads
+the `/catalog` group, optional `/catalog/mthr_map/mthr_sky`, and optional
+`/catalog/dNgal_dzdOm_interpolant/vals_pixel_*` datasets.
+"""
+struct GalaxyCatalog
+    path::String
+    band::String
+    nside::Int
+    npixels::Int
+    dOmega_sterad::Float64
+    dOmega_deg2::Float64
+    ra::Vector{Float64}
+    dec::Vector{Float64}
+    z::Vector{Float64}
+    sigmaz::Vector{Float64}
+    m::Vector{Float64}
+    sky_indices::Vector{Int}
+    mthr_map::Union{Nothing,Vector{Float64}}
+    mthr_empty::Bool
+    luminosity_function::Union{LegacyGalaxyLuminosityFunction,Cosmology.GalaxyLuminosityFunction}
+    kcorr::Union{DeprecatedKCorrection,KCorrection}
+    abs_magnitude_rate::Union{Nothing,Cosmology.LogPowerLawAbsMagnitudeRate}
+    z_grid::Vector{Float64}
+    sky_grid::Vector{Float64}
+    dNgal_dzdOm_vals::Matrix{Float64}
+    dNgal_dzdOm_vals_av::Vector{Float64}
+end
+
+function GalaxyCatalog(path::AbstractString; cosmology::Cosmology.AbstractCosmology=Cosmology.FlatLambdaCDM(),
+    epsilon=nothing)
+    h5open(path, "r") do h
+        group = h["catalog"]
+        attrs_group = attrs(group)
+        band = _hdf5_attr_string(attrs_group["band"])
+        nside = Int(attrs_group["nside"])
+        npixels = haskey(attrs_group, "npixels") ? Int(attrs_group["npixels"]) : 12 * nside^2
+        dOmega_sterad = haskey(attrs_group, "dOmega_sterad") ? Float64(attrs_group["dOmega_sterad"]) : 4pi / npixels
+        dOmega_deg2 = haskey(attrs_group, "dOmega_deg2") ? Float64(attrs_group["dOmega_deg2"]) : dOmega_sterad * (180 / pi)^2
+        ra = Float64.(read(group, "ra"))
+        dec = Float64.(read(group, "dec"))
+        z = Float64.(read(group, "z"))
+        sigmaz = Float64.(read(group, "sigmaz"))
+        m = Float64.(read(group, "m"))
+        sky_indices_raw = Int.(read(group, "sky_indices"))
+        sky_indices = if all(0 <= pix < npixels for pix in sky_indices_raw)
+            sky_indices_raw .+ 1
+        elseif all(1 <= pix <= npixels for pix in sky_indices_raw)
+            sky_indices_raw
+        else
+            throw(ArgumentError("catalog sky_indices must be Python 0-based pixels in 0:$(npixels - 1) or Julia 1-based pixels in 1:$npixels"))
+        end
+        mthr_map = nothing
+        mthr_empty = false
+        if haskey(group, "mthr_map")
+            mgroup = group["mthr_map"]
+            mthr_attr = haskey(attrs(mgroup), "mthr_percentile") ? attrs(mgroup)["mthr_percentile"] : nothing
+            mthr_empty = mthr_attr !== nothing && !(mthr_attr isa Number) && _hdf5_attr_string(mthr_attr) == "empty"
+            if !mthr_empty && haskey(mgroup, "mthr_sky")
+                mthr_map = Float64.(read(mgroup, "mthr_sky"))
+            end
+        end
+        eps = epsilon
+        if eps === nothing && haskey(group, "dNgal_dzdOm_interpolant")
+            iattrs = attrs(group["dNgal_dzdOm_interpolant"])
+            eps = haskey(iattrs, "epsilon") ? Float64(iattrs["epsilon"]) : nothing
+        end
+        lf = _legacy_or_modern_lf(band, cosmology; epsilon=eps)
+        correction = band in _DEPRECATED_KCORR_BANDS ? DeprecatedKCorrection(band) : KCorrection(band)
+        rate = eps === nothing ? nothing : Cosmology.LogPowerLawAbsMagnitudeRate(eps)
+        loaded = _read_galaxy_interpolant(group, npixels)
+        if loaded === nothing
+            z_grid = Float64[]
+            vals = zeros(Float64, 0, npixels)
+        else
+            z_grid, vals = loaded
+        end
+        sky_grid = Float64.(1:npixels)
+        avg = isempty(z_grid) ? Float64[] : vec(mean(vals; dims=2))
+        return GalaxyCatalog(String(path), band, nside, npixels, dOmega_sterad, dOmega_deg2,
+            ra, dec, z, sigmaz, m, sky_indices, mthr_map, mthr_empty, lf, correction, rate,
+            z_grid, sky_grid, vals, avg)
+    end
+end
+
+const load_hdf5 = GalaxyCatalog
+const galaxy_catalog = GalaxyCatalog
+
+function _catalog_column(cat_data, name::Symbol)
+    hasproperty(cat_data, name) && return getproperty(cat_data, name)
+    if cat_data isa AbstractDict
+        haskey(cat_data, name) && return cat_data[name]
+        key = String(name)
+        haskey(cat_data, key) && return cat_data[key]
+    end
+    throw(ArgumentError("catalog data is missing column :$name"))
+end
+
+function create_hdf5(path::AbstractString, cat_data, band::AbstractString, nside::Integer; nest::Bool=false)
+    ra = Float64.(collect(_catalog_column(cat_data, :ra)))
+    dec = Float64.(collect(_catalog_column(cat_data, :dec)))
+    z = Float64.(collect(_catalog_column(cat_data, :z)))
+    sigmaz = Float64.(collect(_catalog_column(cat_data, :sigmaz)))
+    m = Float64.(collect(_catalog_column(cat_data, :m)))
+    n = length(ra)
+    length(dec) == length(z) == length(sigmaz) == length(m) == n || throw(ArgumentError("catalog columns must have the same length"))
+    finite = isfinite.(ra) .& isfinite.(dec) .& isfinite.(z) .& isfinite.(sigmaz) .& isfinite.(m)
+    ra, dec, z, sigmaz, m = ra[finite], dec[finite], z[finite], sigmaz[finite], m[finite]
+    npixels = 12 * Int(nside)^2
+    sky_indices = radec2indeces(ra, dec, nside; nest, zero_based=true)
+    h5open(path, "w") do h
+        group = create_group(h, "catalog")
+        attrs(group)["band"] = String(band)
+        attrs(group)["nside"] = Int(nside)
+        attrs(group)["npixels"] = npixels
+        attrs(group)["dOmega_sterad"] = 4pi / npixels
+        attrs(group)["dOmega_deg2"] = 4pi / npixels * (180 / pi)^2
+        attrs(group)["Ngal"] = length(ra)
+        write(group, "ra", ra)
+        write(group, "dec", dec)
+        write(group, "z", z)
+        write(group, "sigmaz", sigmaz)
+        write(group, "m", m)
+        write(group, "sky_indices", sky_indices)
+    end
+    return path
+end
+
+function return_counts_map(c::GalaxyCatalog)
+    counts = zeros(Float64, c.npixels)
+    for pix in c.sky_indices
+        counts[pix] += 1
+    end
+    return counts
+end
+
+function _percentile(sorted_values::AbstractVector{<:Real}, p::Real)
+    isempty(sorted_values) && return -Inf
+    0 <= p <= 100 || throw(ArgumentError("percentile must lie in [0, 100]"))
+    length(sorted_values) == 1 && return float(first(sorted_values))
+    pos = 1 + (length(sorted_values) - 1) * float(p) / 100
+    lo = floor(Int, pos)
+    hi = ceil(Int, pos)
+    lo == hi && return float(sorted_values[lo])
+    t = pos - lo
+    return float(sorted_values[lo]) + t * (float(sorted_values[hi]) - float(sorted_values[lo]))
+end
+
+function calculate_mthr!(path::AbstractString; mthr_percentile=50, nside_mthr=nothing)
+    catalog = GalaxyCatalog(path)
+    if mthr_percentile == "empty"
+        h5open(path, "r+") do h
+            group = h["catalog"]
+            haskey(group, "mthr_map") && delete_object(group, "mthr_map")
+            mgroup = create_group(group, "mthr_map")
+            attrs(mgroup)["mthr_percentile"] = "empty"
+            attrs(mgroup)["nside_mthr"] = catalog.nside
+            attrs(mgroup)["sky_checkpoint"] = catalog.npixels - 1
+        end
+        return GalaxyCatalog(path)
+    end
+    nm = nside_mthr === nothing ? catalog.nside : Int(nside_mthr)
+    bigpix = radec2indeces(catalog.ra, catalog.dec, nm)
+    mthr_sky = fill(-Inf, catalog.npixels)
+    for pix in 1:catalog.npixels
+        ra_center, dec_center = indices2radec(pix, catalog.nside)
+        big = radec2indeces(ra_center, dec_center, nm)
+        vals = sort(catalog.m[bigpix .== big])
+        !isempty(vals) && (mthr_sky[pix] = _percentile(vals, float(mthr_percentile)))
+    end
+    keep = catalog.m .<= mthr_sky[catalog.sky_indices]
+    h5open(path, "r+") do h
+        group = h["catalog"]
+        haskey(group, "mthr_map") && delete_object(group, "mthr_map")
+        mgroup = create_group(group, "mthr_map")
+        attrs(mgroup)["mthr_percentile"] = float(mthr_percentile)
+        attrs(mgroup)["nside_mthr"] = nm
+        attrs(mgroup)["sky_checkpoint"] = catalog.npixels - 1
+        write(mgroup, "mthr_sky", mthr_sky)
+        for name in ("ra", "dec", "z", "sigmaz", "m", "sky_indices")
+            values = read(group, name)
+            delete_object(group, name)
+            write(group, name, values[keep])
+        end
+        attrs(group)["Ngal"] = count(keep)
+    end
+    return GalaxyCatalog(path)
+end
+
+function calc_mthr(c::GalaxyCatalog, z, skypos, cosmology::Cosmology.AbstractCosmology; dl=nothing)
+    c.mthr_empty && throw(ArgumentError("GalaxyCatalog has an empty magnitude-threshold map"))
+    c.mthr_map === nothing && throw(ArgumentError("GalaxyCatalog does not contain a magnitude-threshold map"))
+    zv, sv, shape = _vectorize_pair(z, skypos)
+    dlv = _distance_vector(cosmology, zv, dl)
+    out = Vector{Float64}(undef, length(zv))
+    @inbounds for i in eachindex(zv)
+        row = sv[i]
+        1 <= row <= length(c.mthr_map) || throw(ArgumentError("catalog sky row $row outside 1:$(length(c.mthr_map))"))
+        out[i] = Conversions.absolute_magnitude(c.mthr_map[row], dlv[i], c.kcorr(zv[i]))
+    end
+    return _shape_output(out, shape)
+end
+
+function effective_galaxy_number_interpolant(c::GalaxyCatalog, z, skypos,
+    cosmology::Cosmology.AbstractCosmology; average::Bool=false, dl=nothing)
+    zv, sv, shape = _vectorize_pair(z, skypos)
+    if c.mthr_empty
+        bg = [_legacy_or_modern_background(c.luminosity_function, -Inf, zi, c.abs_magnitude_rate) *
+              Cosmology.dvc_dz_dOmega(cosmology, zi) for zi in zv]
+        return _shape_output(zeros(Float64, length(zv)), shape), _shape_output(bg, shape)
+    end
+    c.abs_magnitude_rate === nothing && throw(ArgumentError("GalaxyCatalog requires epsilon to evaluate background density"))
+    c.mthr_map === nothing && throw(ArgumentError("GalaxyCatalog does not contain a magnitude-threshold map"))
+    !isempty(c.z_grid) || throw(ArgumentError("GalaxyCatalog does not contain a dNgal_dzdOm_interpolant group"))
+    dlv = _distance_vector(cosmology, zv, dl)
+    mthr = Float64.(vec(collect(calc_mthr(c, zv, sv, cosmology; dl=dlv))))
+    gc = Vector{Float64}(undef, length(zv))
+    bg = Vector{Float64}(undef, length(zv))
+    @inbounds for i in eachindex(zv)
+        zval = zv[i]
+        row = sv[i]
+        outside_grid = zval > last(c.z_grid)
+        if average
+            gc[i] = _interp_linear(zval, c.z_grid, c.dNgal_dzdOm_vals_av; left=0.0, right=0.0)
+        else
+            gc[i] = _interp2_linear(c.z_grid, c.sky_grid, c.dNgal_dzdOm_vals, zval, row; fill=0.0)
+        end
+        mthr_i = outside_grid ? -Inf : mthr[i]
+        bg[i] = _legacy_or_modern_background(c.luminosity_function, mthr_i, zval, c.abs_magnitude_rate) *
+            Cosmology.dvc_dz_dOmega(cosmology, zval)
+    end
+    return _shape_output(gc, shape), _shape_output(bg, shape)
 end
 
 """
