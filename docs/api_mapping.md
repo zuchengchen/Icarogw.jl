@@ -57,7 +57,7 @@ Status meanings:
 | `chi_p_prior_from_isotropic_spins` | same name | implemented | Native maximum-distribution density. |
 | `joint_prior_from_isotropic_spins`, `chi_p_prior_given_chi_eff_q` | same names | implemented | RNG-explicit Monte Carlo and weighted KDE helpers. |
 | `chi_eff_from_spins`, `chi_p_from_spins`, `cartestianspins2chis` | `chi_eff_from_spins`, `chi_p_from_spins`, `cartesian_spins_to_chis` | implemented/renamed | Core spin conversions. |
-| skymap/HEALPix helpers | catalog/skymap future module | planned | Not first-version core. |
+| skymap/HEALPix helpers | catalog/skymap future module | planned | Requires FITS/HEALPix/NUNIQ dependency decision. |
 
 ## priors.py and wrappers.py
 
@@ -147,7 +147,9 @@ Status meanings:
 
 | Python API | Julia API | Status | Notes |
 | --- | --- | --- | --- |
-| galaxy catalog / EM counterpart APIs | `Catalog.catalog_planned` | planned | Clear planned error. |
+| `kcorr`, `kcorr_dep` | `KCorrection`, `DeprecatedKCorrection` | implemented/renamed | Modern and legacy dependency-light K-correction formulas with Python fixture coverage. |
+| `EM_likelihood_prior_differential_volume` | `em_likelihood_prior_differential_volume`, `EM_likelihood_prior_differential_volume` | implemented/renamed | Uniform, gaussian, and gaussian-without-comoving-volume redshift helper with fixture coverage. |
+| galaxy catalog / EM counterpart runtime APIs | `Catalog.catalog_planned` | planned | Pixelated catalog, skymap, and counterpart workflows still require catalog/skymap dependency decisions. |
 | stochastic background APIs | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw`, `StochasticData`, `stochastic_loglikelihood` | partial | Energy spectrum, omega weights, vanilla spectral-siren helper, and Gaussian stochastic likelihood are implemented; full covariance/data-product readers remain pending. |
 | `Omega_GW` helpers | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw`, `joint_loglikelihood` | partial | Duplicate Python `stochastic.py`/`omega_gw.py` formulas are unified in Julia with a vanilla CBC+stochastic helper. |
 | `utils.check_posterior_samples_and_prior` | `check_posterior_samples_and_prior` | implemented | Non-Condor validation helper. |

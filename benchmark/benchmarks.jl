@@ -25,3 +25,11 @@ omega_weights = precompute_omega_weights(MersenneTwister(9), freqs; tmp_min=5.0,
 
 println("stochastic Omega_GW spectrum")
 display(@benchmark spectral_siren_omega_gw($model, $omega_weights))
+
+zgrid = collect(range(0.01, 0.3; length=64))
+kc = KCorrection("bJ-glade+")
+catalog_cosmology = FlatLambdaCDM(zmax=1.0)
+
+println("catalog formula helpers")
+display(@benchmark $kc($zgrid))
+display(@benchmark em_likelihood_prior_differential_volume($zgrid, 0.1, 0.03, $catalog_cosmology; ptype="gaussian"))

@@ -24,6 +24,7 @@ using .Likelihood
 using .Simulation
 using .Plotting
 using .DynestyInterface
+using .Catalog
 using .Stochastic
 
 export COST_C,
@@ -229,6 +230,13 @@ export COST_C,
     dynesty_prior_transform,
     dynesty_loglikelihood,
     dynesty_problem,
+    KCorrection,
+    DeprecatedKCorrection,
+    kcorr,
+    kcorr_dep,
+    user_normal,
+    em_likelihood_prior_differential_volume,
+    EM_likelihood_prior_differential_volume,
     PNVelocityPowers,
     OmegaGWWeights,
     StochasticData,

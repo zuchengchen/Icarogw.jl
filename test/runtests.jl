@@ -6,6 +6,12 @@ using Test
 
 _truthy(x) = x isa Bool ? x : lowercase(String(x)) == "true"
 
+struct _ToyCatalogCosmology <: Icarogw.Cosmology.AbstractCosmology
+    zmax::Float64
+end
+Icarogw.Cosmology.dvc_dz_dOmega(::_ToyCatalogCosmology, z::Real) = z^2 + 0.1
+Icarogw.Cosmology.comoving_volume(::_ToyCatalogCosmology, z::Real) = 4pi * (z^3 / 3 + 0.1z)
+
 function _tiny_population_data(c=FlatLambdaCDM(zmax=2))
     z1, z2 = 0.2, 0.35
     m1a, m2a, dla = source_to_detector(30.0, 20.0, z1, c)
@@ -86,6 +92,38 @@ end
           catalog_ref.background_effective_density rtol=4e-4 atol=1e-12
     @test background_effective_galaxy_density(catalog_lf, first(catalog_ref.Mthr), first(catalog_ref.redshift);
         epsilon=first(catalog_ref.epsilon)) ≈ first(catalog_ref.background_effective_density) rtol=4e-4
+
+    kcorr_ref = CSV.File(joinpath(refdir, "reference_catalog_kcorr.csv")) |> DataFrame
+    for row in eachrow(kcorr_ref)
+        if row.family == "modern"
+            correction = KCorrection(row.band)
+            if endswith(row.band, "upglade")
+                @test correction(row.z; k0=0.1 + 0.05 * (row.i - 1),
+                    dkbydz=[1.0, -0.5, 0.25, 0.75][row.i], z0=0.05 * (row.i - 1)) ≈ row.kcorr rtol=2e-14
+            else
+                @test correction(row.z) ≈ row.kcorr rtol=2e-14
+            end
+        else
+            @test DeprecatedKCorrection(row.band)(row.z) ≈ row.kcorr rtol=2e-14
+        end
+    end
+    @test kcorr === KCorrection
+    @test kcorr_dep === DeprecatedKCorrection
+    @test_throws ArgumentError KCorrection("unknown-band")
+    @test_throws ArgumentError KCorrection("W1-upglade")(0.1)
+
+    em_ref = CSV.File(joinpath(refdir, "reference_catalog_em.csv")) |> DataFrame
+    toy_catalog_cosmology = _ToyCatalogCosmology(1.0)
+    for row in eachrow(em_ref)
+        @test user_normal(row.z, row.zobs, row.sigmaz) ≈ row.normal_pdf rtol=2e-14
+        @test em_likelihood_prior_differential_volume(row.z, row.zobs, row.sigmaz, toy_catalog_cosmology;
+            Numsigma=row.Numsigma, ptype=row.ptype) ≈ row.value rtol=4e-10 atol=1e-12
+    end
+    for ptype in unique(em_ref.ptype)
+        rows = em_ref[em_ref.ptype .== ptype, :]
+        @test EM_likelihood_prior_differential_volume(rows.z, first(rows.zobs), first(rows.sigmaz),
+            toy_catalog_cosmology; Numsigma=first(rows.Numsigma), ptype=ptype) ≈ rows.value rtol=4e-10 atol=1e-12
+    end
 
     conv_ref = only(CSV.File(joinpath(refdir, "reference_conversions_core.csv")) |> DataFrame |> eachrow)
     @test chirp_mass(conv_ref.m1, conv_ref.m2) ≈ conv_ref.chirp_mass rtol=1e-14

@@ -89,6 +89,7 @@ def _install_lightweight_reference_package() -> None:
     astropy_cosmology_stub.FlatLambdaCDM = _UnavailableAstropyCosmology
     astropy_cosmology_stub.FlatwCDM = _UnavailableAstropyCosmology
     astropy_cosmology_stub.Flatw0waCDM = _UnavailableAstropyCosmology
+    astropy_cosmology_stub.Planck15 = object()
     astropy_stub.cosmology = astropy_cosmology_stub
     sys.modules.setdefault("astropy", astropy_stub)
     sys.modules.setdefault("astropy.cosmology", astropy_cosmology_stub)
@@ -96,6 +97,14 @@ def _install_lightweight_reference_package() -> None:
     conversions_stub = types.ModuleType("icarogw.conversions")
     conversions_stub.L2M = lambda luminosity: -2.5 * math.log10(luminosity) + 71.197425
     conversions_stub.M2L = lambda magnitude: 3.0128e28 * 10.0 ** (-0.4 * magnitude)
+    conversions_stub.M2m = lambda magnitude, dl, kcorr: magnitude + 5 * np.log10(dl) + 25 + kcorr
+    conversions_stub.m2M = lambda magnitude, dl, kcorr: magnitude - 5 * np.log10(dl) - 25 - kcorr
+    conversions_stub.radec2indeces = lambda *args, **kwargs: (_ for _ in ()).throw(
+        RuntimeError("skymap fixtures are not part of this lightweight suite")
+    )
+    conversions_stub.indices2radec = lambda *args, **kwargs: (_ for _ in ()).throw(
+        RuntimeError("skymap fixtures are not part of this lightweight suite")
+    )
     sys.modules.setdefault("icarogw.conversions", conversions_stub)
     package.conversions = sys.modules["icarogw.conversions"]
 
@@ -109,6 +118,90 @@ def _install_lightweight_reference_package() -> None:
     tqdm_stub = types.ModuleType("tqdm")
     tqdm_stub.tqdm = lambda iterable=None, *args, **kwargs: iterable if iterable is not None else []
     sys.modules.setdefault("tqdm", tqdm_stub)
+
+
+def _install_astropy_constants_stub() -> None:
+    """Install the tiny ``astropy.constants`` surface used by omega fixtures."""
+
+    astropy_stub = sys.modules.setdefault("astropy", types.ModuleType("astropy"))
+    constants_stub = sys.modules.get("astropy.constants")
+    if constants_stub is None:
+        constants_stub = types.ModuleType("astropy.constants")
+
+        class _Constant:
+            def __init__(self, value):
+                self.value = value
+
+        constants_stub.M_sun = _Constant(1.988409870698051e30)
+        constants_stub.G = _Constant(6.6743e-11)
+        constants_stub.c = _Constant(299792458.0)
+        constants_stub.kpc = _Constant(3.0856775814913675e19)
+        sys.modules["astropy.constants"] = constants_stub
+    astropy_stub.constants = constants_stub
+
+
+def _install_matplotlib_stub() -> None:
+    matplotlib_stub = sys.modules.setdefault("matplotlib", types.ModuleType("matplotlib"))
+    pylab_stub = sys.modules.setdefault("matplotlib.pylab", types.ModuleType("matplotlib.pylab"))
+    pyplot_stub = sys.modules.setdefault("matplotlib.pyplot", types.ModuleType("matplotlib.pyplot"))
+    pylab_stub.subplots = lambda *args, **kwargs: (_ for _ in ()).throw(
+        RuntimeError("plot fixtures are not part of this lightweight suite")
+    )
+    pyplot_stub.subplots = pylab_stub.subplots
+    matplotlib_stub.pylab = pylab_stub
+    matplotlib_stub.pyplot = pyplot_stub
+
+
+def _load_lightweight_catalog_module():
+    """Load ``catalog.py`` for dependency-light formula fixtures.
+
+    The catalog source imports optional I/O and HEALPix packages at module load
+    time even when only K-corrections or EM redshift helpers are needed. This
+    loader stubs those imports but deliberately leaves full catalog/skymap
+    workflows unavailable.
+    """
+
+    _install_lightweight_reference_package()
+    _install_mpmath_stub()
+
+    cosmology_stub = sys.modules["icarogw.cosmology"]
+
+    class _UnavailableReferenceClass:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("catalog file-format fixtures are not part of this lightweight suite")
+
+    cosmology_stub.galaxy_MF = _UnavailableReferenceClass
+    cosmology_stub.log_powerlaw_absM_rate = _UnavailableReferenceClass
+
+    astropy_cosmology_stub = sys.modules["astropy.cosmology"]
+    astropy_cosmology_stub.Planck15 = object()
+
+    healpy_stub = types.ModuleType("healpy")
+    healpy_stub.UNSEEN = float("nan")
+    healpy_stub.nside2npix = lambda nside: 12 * int(nside) ** 2
+    healpy_stub.nside2pixarea = lambda nside, degrees=False: 4 * math.pi / (12 * int(nside) ** 2)
+    healpy_stub.ang2pix = lambda *args, **kwargs: (_ for _ in ()).throw(
+        RuntimeError("HEALPix fixtures are not part of this lightweight suite")
+    )
+    healpy_stub.pix2ang = healpy_stub.ang2pix
+    healpy_stub.ma = lambda value: value
+    healpy_stub.mollview = lambda *args, **kwargs: None
+    sys.modules.setdefault("healpy", healpy_stub)
+
+    h5py_stub = types.ModuleType("h5py")
+    h5py_stub.File = lambda *args, **kwargs: (_ for _ in ()).throw(
+        RuntimeError("HDF5 catalog fixtures are not part of this lightweight suite")
+    )
+    sys.modules.setdefault("h5py", h5py_stub)
+
+    _install_matplotlib_stub()
+
+    mhealpy_stub = types.ModuleType("mhealpy")
+    mhealpy_stub.HealpixBase = _UnavailableReferenceClass
+    mhealpy_stub.HealpixMap = _UnavailableReferenceClass
+    sys.modules.setdefault("mhealpy", mhealpy_stub)
+
+    return _load_reference_module("icarogw.reference_catalog", "icarogw/catalog.py")
 
 
 def _load_lightweight_conversions_module():
@@ -289,6 +382,8 @@ def generate_stochastic_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
     fixture to use when implementing the Julia stochastic/OmegaGW module.
     """
 
+    _install_astropy_constants_stub()
+    _install_matplotlib_stub()
     omega_gw = _load_reference_module("icarogw_reference_omega_gw", "icarogw/omega_gw.py")
 
     freqs = [10.0, 25.0, 75.0, 150.0]
@@ -728,6 +823,74 @@ def generate_catalog_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
     return [path]
 
 
+def generate_catalog_formulas_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
+    """Generate dependency-light fixtures from ``catalog.py`` formula helpers."""
+
+    catalog = _load_lightweight_catalog_module()
+    np = catalog.np
+
+    z = np.array([0.01, 0.08, 0.20, 0.35])
+    k0 = np.array([0.10, 0.15, 0.20, 0.25])
+    dkbydz = np.array([1.0, -0.5, 0.25, 0.75])
+    z0 = np.array([0.0, 0.05, 0.10, 0.15])
+    modern_bands = ["W1-glade+", "K-glade+", "bJ-glade+", "W1-upglade", "g-upglade", "r-upglade"]
+    rows = []
+    for band in modern_bands:
+        correction = catalog.kcorr(band)
+        if band.endswith("upglade"):
+            values = correction(z, k0=k0, dkbydz=dkbydz, z0=z0)
+        else:
+            values = correction(z)
+        for i, value in enumerate(values):
+            rows.append({"family": "modern", "band": band, "i": i + 1, "z": z[i], "kcorr": value})
+
+    for band in ["W1", "K", "bJ"]:
+        correction = catalog.kcorr_dep(band)
+        values = correction(z)
+        for i, value in enumerate(values):
+            rows.append({"family": "deprecated", "band": band, "i": i + 1, "z": z[i], "kcorr": value})
+
+    kcorr_path = outdir / "generated_reference_catalog_kcorr.csv"
+    _write_rows(kcorr_path, ("family", "band", "i", "z", "kcorr"), rows)
+
+    class _CosmologyProxy:
+        zmax = 1.0
+
+        def dVc_by_dzdOmega_at_z(self, zval):
+            return np.asarray(zval) ** 2 + 0.1
+
+        def z2Vc(self, zval):
+            return 4 * np.pi * (zval**3 / 3 + 0.1 * zval)
+
+    zgrid = np.array([0.02, 0.06, 0.10, 0.14, 0.20])
+    zobs = 0.10
+    sigmaz = 0.03
+    numsigma = 2.0
+    em_rows = []
+    for ptype in ["uniform", "gaussian", "gaussian_nocom"]:
+        values = catalog.EM_likelihood_prior_differential_volume(
+            zgrid, zobs, sigmaz, _CosmologyProxy(), Numsigma=numsigma, ptype=ptype
+        )
+        for i, value in enumerate(values):
+            em_rows.append(
+                {
+                    "ptype": ptype,
+                    "i": i + 1,
+                    "z": zgrid[i],
+                    "zobs": zobs,
+                    "sigmaz": sigmaz,
+                    "Numsigma": numsigma,
+                    "value": value,
+                    "normal_pdf": catalog.user_normal(zgrid[i], zobs, sigmaz),
+                }
+            )
+
+    em_path = outdir / "generated_reference_catalog_em.csv"
+    _write_rows(em_path, ("ptype", "i", "z", "zobs", "sigmaz", "Numsigma", "value", "normal_pdf"), em_rows)
+
+    return [kcorr_path, em_path]
+
+
 def not_yet_available(name: str) -> None:
     raise SystemExit(
         f"Fixture suite '{name}' is not implemented yet. Add it when the corresponding "
@@ -739,7 +902,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--suite",
-        choices=("core", "stochastic-smoke", "simulation-utils-smoke", "priors-rates-smoke", "catalog-smoke", "all-small"),
+        choices=(
+            "core",
+            "stochastic-smoke",
+            "simulation-utils-smoke",
+            "priors-rates-smoke",
+            "catalog-smoke",
+            "catalog-formulas-smoke",
+            "all-small",
+        ),
         default="core",
         help="Fixture suite to generate.",
     )
@@ -758,8 +929,10 @@ def main() -> int:
         generated.extend(generate_simulation_utils_smoke(args.outdir))
     if args.suite in ("priors-rates-smoke", "all-small"):
         generated.extend(generate_priors_rates_smoke(args.outdir))
-    if args.suite == "catalog-smoke":
+    if args.suite in ("catalog-smoke", "all-small"):
         generated.extend(generate_catalog_smoke(args.outdir))
+    if args.suite in ("catalog-formulas-smoke", "all-small"):
+        generated.extend(generate_catalog_formulas_smoke(args.outdir))
 
     for path in generated:
         try:

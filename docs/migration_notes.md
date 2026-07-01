@@ -73,6 +73,13 @@ are native Julia: `GalaxyLuminosityFunction` covers Python `galaxy_MF`, and
 normalization uses direct quadrature so common Schechter slopes remain finite
 where the Python incomplete-gamma branch can return `NaN`.
 
+Catalog formula helpers that are independent of pixelated catalog files are
+also native Julia. `KCorrection` and `DeprecatedKCorrection` cover Python
+`kcorr` and `kcorr_dep`; `em_likelihood_prior_differential_volume` covers the
+EM redshift likelihood-prior helper for `uniform`, `gaussian`, and
+`gaussian_nocom` modes. Full catalog/skymap workflows still require a
+FITS/HEALPix/NUNIQ dependency and API decision.
+
 ## Model Composition
 
 Python wrapper classes such as `PowerLaw_PowerLaw`,
@@ -118,7 +125,6 @@ inside likelihood loops. Further performance work should focus on:
 Planned after first-version core:
 
 - galaxy catalog / dark siren / bright siren workflows
-- stochastic background and `Omega_GW`
 - mixed stochastic/catalog/EM likelihoods
 - optional additional file migration formats such as NPZ
 
