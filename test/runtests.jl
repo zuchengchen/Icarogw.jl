@@ -408,6 +408,23 @@ end
     @test diag.nfrequencies == 3
     @test diag.max_weight >= diag.min_weight >= 0
     @test diag.has_nan == false
+
+    residual = [1e-12, -2e-12, 3e-12]
+    sigma2s = fill(4e-24, length(freqs))
+    data = StochasticData(freqs, omega .+ residual, sigma2s; reference_H0=model.cosmology.H0)
+    expected_stochastic = -0.5 * sum((abs.(omega .- data.Cf) .^ 2) ./ data.sigma2s)
+    @test stochastic_loglikelihood(model, weights, data) ≈ expected_stochastic
+
+    hscale = model.cosmology.H0 / 100.0
+    scaled_data = StochasticData(freqs, (omega .+ residual) .* hscale^2, sigma2s .* hscale^4)
+    @test stochastic_loglikelihood(model, weights, scaled_data) ≈ expected_stochastic
+
+    tiny = _tiny_population_data(FlatLambdaCDM(H0=67.7, Om0=0.308, zmax=2))
+    cbc_logl = loglikelihood(model, tiny)
+    @test joint_loglikelihood(model, tiny, weights, data) ≈ cbc_logl + expected_stochastic
+    @test_throws ArgumentError StochasticData(freqs[1:2], omega, sigma2s)
+    @test_throws ArgumentError StochasticData(freqs, omega, [-1.0, 1.0, 1.0])
+    @test_throws ArgumentError stochastic_loglikelihood(model, weights, StochasticData([20.0, 41.0, 80.0], omega, sigma2s))
 end
 
 @testset "migration control files" begin

@@ -120,7 +120,7 @@ Status meanings:
 | `hierarchical_likelihood_noevents` | `no_event_loglikelihood` | implemented/renamed | Upper-limit likelihood. |
 | selection correction | `InjectionSet` + diagnostics | implemented | `xi`, `N_expected`, injection ESS. |
 | diagnostics | `LikelihoodDiagnostics` | implemented | Structured return type. |
-| stochastic likelihood classes | `Stochastic.stochastic_planned` | planned | Full stochastic likelihood still pending; Omega_GW spectrum helpers are now partially implemented. |
+| stochastic likelihood classes | `StochasticData`, `stochastic_loglikelihood`, `joint_loglikelihood` | partial | Gaussian stochastic-only and vanilla CBC+stochastic helpers are implemented; catalog/EM mixed stochastic likelihoods and full covariance/data-product readers remain pending. |
 
 ## simulation.py
 
@@ -140,8 +140,8 @@ Status meanings:
 | Python API | Julia API | Status | Notes |
 | --- | --- | --- | --- |
 | galaxy catalog / EM counterpart APIs | `Catalog.catalog_planned` | planned | Clear planned error. |
-| stochastic background APIs | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw` | partial | Energy spectrum, omega weights, and vanilla spectral-siren helper implemented; stochastic likelihoods pending. |
-| `Omega_GW` helpers | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw` | partial | Duplicate Python `stochastic.py`/`omega_gw.py` formulas are unified in Julia. |
+| stochastic background APIs | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw`, `StochasticData`, `stochastic_loglikelihood` | partial | Energy spectrum, omega weights, vanilla spectral-siren helper, and Gaussian stochastic likelihood are implemented; full covariance/data-product readers remain pending. |
+| `Omega_GW` helpers | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw`, `joint_loglikelihood` | partial | Duplicate Python `stochastic.py`/`omega_gw.py` formulas are unified in Julia with a vanilla CBC+stochastic helper. |
 | `utils.check_posterior_samples_and_prior` | `check_posterior_samples_and_prior` | implemented | Non-Condor validation helper. |
 | `cupy_pal.check_bounds_1D`, `check_bounds_2D` | `check_bounds_1d`, `check_bounds_2d` | implemented/renamed | CPU array semantics only. |
 | Condor helper functions | none | excluded | Explicitly excluded. |

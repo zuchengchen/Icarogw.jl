@@ -49,10 +49,12 @@ complete until the final review checklist proves full scientific coverage.
   number interpolants, GW skymap intersections, k-corrections, and EM helpers.
 - `stochastic.py` and `omega_gw.py`: duplicated `dEdf`, omega-weight, and
   spectral-siren logic is now partially unified in Julia through deterministic
-  energy-spectrum and vanilla spectral-siren helpers. Stochastic-only
-  likelihoods, data products, and joint likelihoods remain open.
+  energy-spectrum, vanilla spectral-siren, Gaussian stochastic-only, and
+  vanilla CBC+stochastic likelihood helpers. Full covariance/data-product
+  readers and catalog/EM mixed stochastic likelihoods remain open.
 - `rates.py` and `likelihood.py`: catalog-aware rates, EM counterpart rates,
-  stochastic-only likelihoods, and CBC+stochastic joint likelihoods.
+  full stochastic data-product support, and catalog/EM stochastic joint
+  likelihoods.
 - `posterior_samples.py` and `injections.py`: catalog/skymap pixelization,
   counterpart attachment, and catalog-aware workflows. Non-catalog cut,
   effective-sample-size, expected-detection, and reweighting helpers are

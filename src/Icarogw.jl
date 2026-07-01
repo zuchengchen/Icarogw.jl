@@ -185,10 +185,13 @@ export COST_C,
     dynesty_problem,
     PNVelocityPowers,
     OmegaGWWeights,
+    StochasticData,
     StochasticDiagnostics,
     pn_velocity_powers,
     dedf,
     precompute_omega_weights,
-    spectral_siren_omega_gw
+    spectral_siren_omega_gw,
+    stochastic_loglikelihood,
+    joint_loglikelihood
 
 end

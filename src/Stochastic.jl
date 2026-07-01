@@ -4,17 +4,22 @@ using Random
 using ..Priors
 using ..Rates
 using ..Cosmology
+using ..DataContainers
+using ..Likelihood
 
 import ..Priors: logpdf, pdf
 import ..Rates: log_rate
 
 export PNVelocityPowers,
     OmegaGWWeights,
+    StochasticData,
     StochasticDiagnostics,
     pn_velocity_powers,
     dedf,
     precompute_omega_weights,
     spectral_siren_omega_gw,
+    stochastic_loglikelihood,
+    joint_loglikelihood,
     stochastic_planned
 
 const SI_M_SUN = 1.988409870698051e30
@@ -56,6 +61,31 @@ struct OmegaGWWeights
 end
 
 Base.length(w::OmegaGWWeights) = length(w.m1s)
+
+"""
+    StochasticData(frequencies, Cf, sigma2s; reference_H0=100)
+
+Data container for stochastic-background likelihoods. `Cf` and `sigma2s` are
+the cross-correlation estimate and variance normalized at `reference_H0`,
+matching Python `Stochastic_likelihood_only`.
+"""
+struct StochasticData
+    frequencies::Vector{Float64}
+    Cf::Vector{Float64}
+    sigma2s::Vector{Float64}
+    reference_H0::Float64
+end
+function StochasticData(frequencies, Cf, sigma2s; reference_H0::Real=100.0)
+    freqs = Float64.(collect(frequencies))
+    cf = Float64.(collect(Cf))
+    sig = Float64.(collect(sigma2s))
+    length(freqs) == length(cf) == length(sig) ||
+        throw(ArgumentError("frequencies, Cf, and sigma2s must have the same length"))
+    all(isfinite, freqs) && all(isfinite, cf) && all(isfinite, sig) ||
+        throw(ArgumentError("stochastic data must be finite"))
+    all(>(0), sig) || throw(ArgumentError("sigma2s must be positive"))
+    return StochasticData(freqs, cf, sig, float(reference_H0))
+end
 
 """
     StochasticDiagnostics
@@ -241,8 +271,45 @@ function spectral_siren_omega_gw(model::SimplePowerLawPopulation, weights::Omega
     return omega
 end
 
+function _check_stochastic_axes(weights::OmegaGWWeights, data::StochasticData)
+    length(weights.frequencies) == length(data.frequencies) ||
+        throw(ArgumentError("OmegaGW weights and stochastic data have different frequency counts"))
+    all(isapprox.(weights.frequencies, data.frequencies; rtol=1e-12, atol=1e-12)) ||
+        throw(ArgumentError("OmegaGW weights and stochastic data frequencies do not match"))
+    return nothing
+end
+
+"""
+    stochastic_loglikelihood(model, weights, data)
+
+Gaussian stochastic-background log-likelihood, matching Python
+`Stochastic_likelihood_only` up to the omitted normalization constant.
+"""
+function stochastic_loglikelihood(model::SimplePowerLawPopulation, weights::OmegaGWWeights, data::StochasticData)
+    _check_stochastic_axes(weights, data)
+    hscale = model.cosmology.H0 / data.reference_H0
+    cf = data.Cf .* hscale^(-2)
+    sigma2s = data.sigma2s .* hscale^(-4)
+    omega = spectral_siren_omega_gw(model, weights)
+    diff = abs.(omega .- cf)
+    value = -0.5 * sum((diff .^ 2) ./ sigma2s)
+    return isfinite(value) ? value : -Inf
+end
+
+"""
+    joint_loglikelihood(model, population_data, weights, stochastic_data; options=LikelihoodOptions())
+
+Poisson CBC hierarchical likelihood plus the stochastic-background likelihood.
+"""
+function joint_loglikelihood(model::SimplePowerLawPopulation, population_data::PopulationData,
+    weights::OmegaGWWeights, stochastic_data::StochasticData; options::LikelihoodOptions=LikelihoodOptions())
+    cbc = loglikelihood(model, population_data; options)
+    isfinite(cbc) || return -Inf
+    return cbc + stochastic_loglikelihood(model, weights, stochastic_data)
+end
+
 function stochastic_planned()
-    throw(ErrorException("Stochastic-only likelihoods and catalog/stochastic mixed likelihoods are not implemented yet. The Omega_GW energy-spectrum and vanilla spectral-siren helpers are available."))
+    throw(ErrorException("Catalog/stochastic mixed likelihoods with catalog/EM rate models are not implemented yet. Stochastic-only and vanilla CBC+stochastic likelihood helpers are available."))
 end
 
 end
