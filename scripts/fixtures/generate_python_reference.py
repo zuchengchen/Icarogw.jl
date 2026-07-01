@@ -69,8 +69,27 @@ def _install_lightweight_reference_package() -> None:
             raise RuntimeError("cosmology-dependent simulation fixtures are not part of this lightweight suite")
 
     cosmology_stub.astropycosmology = _UnavailableAstropyCosmology
+    cosmology_stub.alphalog_astropycosmology = _UnavailableAstropyCosmology
+    cosmology_stub.cM_astropycosmology = _UnavailableAstropyCosmology
+    cosmology_stub.extraD_astropycosmology = _UnavailableAstropyCosmology
+    cosmology_stub.Xi0_astropycosmology = _UnavailableAstropyCosmology
+    cosmology_stub.eps0_astropycosmology = _UnavailableAstropyCosmology
+    cosmology_stub.md_rate = _UnavailableAstropyCosmology
+    cosmology_stub.md_gamma_rate = _UnavailableAstropyCosmology
+    cosmology_stub.powerlaw_rate = _UnavailableAstropyCosmology
+    cosmology_stub.beta_rate = _UnavailableAstropyCosmology
+    cosmology_stub.beta_rate_line = _UnavailableAstropyCosmology
     sys.modules.setdefault("icarogw.cosmology", cosmology_stub)
     package.cosmology = sys.modules["icarogw.cosmology"]
+
+    astropy_stub = types.ModuleType("astropy")
+    astropy_cosmology_stub = types.ModuleType("astropy.cosmology")
+    astropy_cosmology_stub.FlatLambdaCDM = _UnavailableAstropyCosmology
+    astropy_cosmology_stub.FlatwCDM = _UnavailableAstropyCosmology
+    astropy_cosmology_stub.Flatw0waCDM = _UnavailableAstropyCosmology
+    astropy_stub.cosmology = astropy_cosmology_stub
+    sys.modules.setdefault("astropy", astropy_stub)
+    sys.modules.setdefault("astropy.cosmology", astropy_cosmology_stub)
 
     conversions_stub = types.ModuleType("icarogw.conversions")
     conversions_stub.L2M = lambda luminosity: -2.5 * math.log10(luminosity) + 71.197425
@@ -269,9 +288,14 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
     """Generate deterministic priors/rates parity fixtures."""
 
     _install_lightweight_reference_package()
+    _prepend_python_reference()
     import scipy.special  # noqa: F401 - ensures priors.py can access scipy.special
+    import scipy.stats  # noqa: F401 - wrappers access scipy.stats through the scipy module
 
     priors = _load_reference_module("icarogw.reference_priors", "icarogw/priors.py")
+    sys.modules["icarogw.priors"] = priors
+    sys.modules["icarogw"].priors = priors
+    wrappers = _load_reference_module("icarogw.reference_wrappers", "icarogw/wrappers.py")
     np = priors.np
 
     xs = np.array([4.0, 5.5, 7.0])
@@ -292,6 +316,14 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
     log_rate_2 = np.array([-9.5, -12.0, -12.0])
     lambda_pop = 0.35
     mixed_rate = np.logaddexp(np.log(lambda_pop) + log_rate_1, np.log1p(-lambda_pop) + log_rate_2)
+    chi1 = np.array([0.2, 0.45, 0.7])
+    chi2 = np.array([0.3, 0.35, 0.6])
+    cos1 = np.array([0.4, 0.1, -0.2])
+    cos2 = np.array([-0.2, 0.3, 0.7])
+    mass1_source = np.array([20.0, 35.0, 50.0])
+    mass2_source = np.array([15.0, 25.0, 30.0])
+    domega220 = np.array([-0.5, 0.0, 0.7])
+    dtau220 = np.array([0.2, -0.3, 0.5])
 
     rows = []
     high = priors._highpass_filter(xs, 5.0, 2.0)
@@ -306,6 +338,28 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
     abs_l_powerlaw_logpdf = abs_l_powerlaw.log_pdf(M_abs)
     abs_l_powerlaw_cdf = abs_l_powerlaw.cdf(M_abs)
     log_bivar = bivar.log_pdf(x1, x2)
+
+    spin_gaussian = wrappers.spinprior_default_gaussian()
+    spin_gaussian.update(mu_chi_1=0.25, mu_chi_2=0.35, sigma_chi_1=0.2, sigma_chi_2=0.25, sigma_t=0.5, csi_spin=0.4)
+    spin_evolving = wrappers.spinprior_default_evolving_gaussian()
+    spin_evolving.update(mu_chi=0.15, sigma_chi=0.2, mu_dot=0.002, sigma_dot=0.001, sigma_t=0.6, csi_spin=0.3)
+    spin_beta_gauss = wrappers.spinprior_default_beta_window_gaussian()
+    spin_beta_gauss.update(mt=0.8, delta_mt=0.2, mix_f=40.0, alpha_chi=2.0, beta_chi=3.0,
+                           mu_chi=0.35, sigma_chi=0.2, sigma_t=0.5, csi_spin=0.4)
+    spin_beta_beta = wrappers.spinprior_default_beta_window_beta()
+    spin_beta_beta.update(mt=0.8, delta_mt=0.2, mix_f=40.0, alpha_chi_low=2.0, beta_chi_low=3.0,
+                          alpha_chi_high=4.0, beta_chi_high=2.5, sigma_t=0.5, csi_spin=0.4)
+    pseob = wrappers.pseobprior_gaussian()
+    pseob.update(mu_domega220=0.1, sigma_domega220=1.2, mu_dtau220=-0.2, sigma_dtau220=1.5, rho_pseob=0.25)
+    eco = wrappers.spinprior_ECOs_totally_reflective()
+    eco.update(alpha_chi=2.0, beta_chi=3.0, eps=1e-10, f_eco=0.35, sigma_chi_ECO=0.03)
+
+    spin_gaussian_logpdf = spin_gaussian.log_pdf(chi1, chi2, cos1, cos2)
+    spin_evolving_logpdf = spin_evolving.log_pdf(chi1, chi2, cos1, cos2, mass1_source, mass2_source)
+    spin_beta_gauss_logpdf = spin_beta_gauss.log_pdf(chi1, chi2, cos1, cos2, mass1_source, mass2_source)
+    spin_beta_beta_logpdf = spin_beta_beta.log_pdf(chi1, chi2, cos1, cos2, mass1_source, mass2_source)
+    pseob_logpdf = pseob.log_pdf(domega220, dtau220)
+    eco_logpdf = eco.log_pdf(chi1, chi2)
     for i in range(len(xs)):
         rows.append(
             {
@@ -327,6 +381,20 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
                 "log_rate_2": log_rate_2[i],
                 "lambda_pop": lambda_pop,
                 "mixed_log_rate": mixed_rate[i],
+                "chi1": chi1[i],
+                "chi2": chi2[i],
+                "cos1": cos1[i],
+                "cos2": cos2[i],
+                "mass1_source": mass1_source[i],
+                "mass2_source": mass2_source[i],
+                "spin_gaussian_logpdf": spin_gaussian_logpdf[i],
+                "spin_evolving_logpdf": spin_evolving_logpdf[i],
+                "spin_beta_gaussian_logpdf": spin_beta_gauss_logpdf[i],
+                "spin_beta_beta_logpdf": spin_beta_beta_logpdf[i],
+                "domega220": domega220[i],
+                "dtau220": dtau220[i],
+                "pseob_logpdf": pseob_logpdf[i],
+                "eco_logpdf": eco_logpdf[i],
             }
         )
 
@@ -352,6 +420,20 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
             "log_rate_2",
             "lambda_pop",
             "mixed_log_rate",
+            "chi1",
+            "chi2",
+            "cos1",
+            "cos2",
+            "mass1_source",
+            "mass2_source",
+            "spin_gaussian_logpdf",
+            "spin_evolving_logpdf",
+            "spin_beta_gaussian_logpdf",
+            "spin_beta_beta_logpdf",
+            "domega220",
+            "dtau220",
+            "pseob_logpdf",
+            "eco_logpdf",
         ),
         rows,
     )

@@ -243,6 +243,12 @@ end
 SpinWeightedRate(base::AbstractCBCRateModel, spin_prior) =
     SpinWeightedRate(base, spin_prior, _default_spin_columns(spin_prior))
 _default_spin_columns(::DefaultSpinPrior) = (:chi_1, :chi_2, :cos_t_1, :cos_t_2)
+_default_spin_columns(::GaussianComponentSpinPrior) = (:chi_1, :chi_2, :cos_t_1, :cos_t_2)
+_default_spin_columns(::EvolvingGaussianSpinPrior) = (:chi_1, :chi_2, :cos_t_1, :cos_t_2, :mass_1_source, :mass_2_source)
+_default_spin_columns(::BetaWindowGaussianSpinPrior) = (:chi_1, :chi_2, :cos_t_1, :cos_t_2, :mass_1_source, :mass_2_source)
+_default_spin_columns(::BetaWindowBetaSpinPrior) = (:chi_1, :chi_2, :cos_t_1, :cos_t_2, :mass_1_source, :mass_2_source)
+_default_spin_columns(::ECOTotallyReflectiveSpinPrior) = (:chi_1, :chi_2)
+_default_spin_columns(::PSEOBGaussianPrior) = (:domega220, :dtau220)
 _default_spin_columns(::GaussianSpinPrior) = (:chi_eff, :chi_p)
 
 const _simple_schema = ParameterSchema(

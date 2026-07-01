@@ -133,6 +133,25 @@ end
     abs_lum = AbsLuminosityPowerLawInMagnitude(-23.0, -16.0, -1.1)
     @test logpdf(abs_lum, priors_rates_ref.M_abs) ≈ priors_rates_ref.abs_l_powerlaw_logpdf rtol=2e-14
     @test cdf(abs_lum, priors_rates_ref.M_abs) ≈ priors_rates_ref.abs_l_powerlaw_cdf rtol=2e-14
+    spin_gaussian = GaussianComponentSpinPrior(0.25, 0.35, 0.2, 0.25, 0.5, 0.4)
+    @test logpdf(spin_gaussian, priors_rates_ref.chi1, priors_rates_ref.chi2,
+        priors_rates_ref.cos1, priors_rates_ref.cos2) ≈ priors_rates_ref.spin_gaussian_logpdf rtol=2e-14
+    spin_evolving = EvolvingGaussianSpinPrior(0.15, 0.2, 0.002, 0.001, 0.6, 0.3)
+    @test logpdf(spin_evolving, priors_rates_ref.chi1, priors_rates_ref.chi2, priors_rates_ref.cos1,
+        priors_rates_ref.cos2, priors_rates_ref.mass1_source, priors_rates_ref.mass2_source) ≈
+          priors_rates_ref.spin_evolving_logpdf rtol=2e-14
+    spin_beta_gaussian = BetaWindowGaussianSpinPrior(0.8, 0.2, 40.0, 2.0, 3.0, 0.35, 0.2, 0.5, 0.4)
+    @test logpdf(spin_beta_gaussian, priors_rates_ref.chi1, priors_rates_ref.chi2, priors_rates_ref.cos1,
+        priors_rates_ref.cos2, priors_rates_ref.mass1_source, priors_rates_ref.mass2_source) ≈
+          priors_rates_ref.spin_beta_gaussian_logpdf rtol=2e-14
+    spin_beta_beta = BetaWindowBetaSpinPrior(0.8, 0.2, 40.0, 2.0, 3.0, 4.0, 2.5, 0.5, 0.4)
+    @test logpdf(spin_beta_beta, priors_rates_ref.chi1, priors_rates_ref.chi2, priors_rates_ref.cos1,
+        priors_rates_ref.cos2, priors_rates_ref.mass1_source, priors_rates_ref.mass2_source) ≈
+          priors_rates_ref.spin_beta_beta_logpdf rtol=2e-14
+    pseob = PSEOBGaussianPrior(0.1, 1.2, -0.2, 1.5, 0.25)
+    @test logpdf(pseob, priors_rates_ref.domega220, priors_rates_ref.dtau220) ≈ priors_rates_ref.pseob_logpdf rtol=2e-14
+    eco = ECOTotallyReflectiveSpinPrior(2.0, 3.0, 1e-10, 0.35, 0.03)
+    @test logpdf(eco, priors_rates_ref.chi1, priors_rates_ref.chi2) ≈ priors_rates_ref.eco_logpdf rtol=2e-14
     bivar = Bivariate2DGaussian(
         x1min=-1.0,
         x1max=1.0,
@@ -158,6 +177,7 @@ end
     @test isfinite(logpdf(g, 30.0))
     @test isfinite(logpdf(mix, 35.0))
     @test absL_PL_inM === AbsLuminosityPowerLawInMagnitude
+    @test_throws ArgumentError BetaWindowBetaSpinPrior(0.8, 0.2, 40.0, 1.0, 3.0, 4.0, 2.5, 0.5, 0.4)
 
     cm = ConditionalMassDistribution(PowerLaw(5, 80, -2), PowerLaw(5, 80, 1))
     @test isfinite(logpdf(cm, 30.0, 20.0))
@@ -365,6 +385,12 @@ end
         chi_1=[spin_cols[1]], chi_2=[spin_cols[2]], cos_t_1=[spin_cols[3]], cos_t_2=[spin_cols[4]], prior=[1.0]);
         ntotal=10, Tobs=1)
     @test isfinite(loglikelihood(spin_rate, PopulationData(PosteriorSampleSet(ps_spin), inj_spin)))
+
+    mass_spin_prior = EvolvingGaussianSpinPrior(0.15, 0.2, 0.002, 0.001, 0.6, 0.3)
+    mass_spin_rate = SpinWeightedRate(spin_rate.base, mass_spin_prior)
+    @test mass_spin_rate.spin_columns == (:chi_1, :chi_2, :cos_t_1, :cos_t_2, :mass_1_source, :mass_2_source)
+    @test log_event_rate(mass_spin_rate, m1d, m2d, dl, spin_cols..., 30.0, 20.0, prior) ≈
+        log_event_rate(mass_spin_rate.base, m1d, m2d, dl, prior) + logpdf(mass_spin_prior, spin_cols..., 30.0, 20.0)
 
     eff_prior = GaussianSpinPrior(0.0, 0.3, 0.4, 0.2, 0.1)
     eff_rate = SpinWeightedRate(CBCMass1Rate(c, mass, qprior, rate; R0=1), eff_prior)

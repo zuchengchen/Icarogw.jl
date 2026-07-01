@@ -39,6 +39,12 @@ export AbstractPrior,
     GaussianLinear,
     MixtureMassPrior,
     DefaultSpinPrior,
+    GaussianComponentSpinPrior,
+    EvolvingGaussianSpinPrior,
+    BetaWindowGaussianSpinPrior,
+    BetaWindowBetaSpinPrior,
+    PSEOBGaussianPrior,
+    ECOTotallyReflectiveSpinPrior,
     GaussianSpinPrior,
     logpdf,
     pdf,
@@ -886,10 +892,187 @@ struct DefaultSpinPrior
 end
 DefaultSpinPrior(alpha_chi, beta_chi, sigma_t, csi_spin) =
     DefaultSpinPrior(BetaDistribution(alpha_chi, beta_chi), TruncatedGaussian(1, sigma_t, -1, 1), float(csi_spin))
+_component_spin_angular_logpdf(aligned::TruncatedGaussian, csi_spin, cos1, cos2) =
+    logaddexp(log1p(-csi_spin) + log(0.25), log(csi_spin) + logpdf(aligned, cos1) + logpdf(aligned, cos2))
 function logpdf(p::DefaultSpinPrior, chi1, chi2, cos1, cos2)
-    angular = logaddexp(log1p(-p.csi_spin) + log(0.25), log(p.csi_spin) + logpdf(p.aligned, cos1) + logpdf(p.aligned, cos2))
+    angular = _component_spin_angular_logpdf(p.aligned, p.csi_spin, cos1, cos2)
     return logpdf(p.beta, chi1) + logpdf(p.beta, chi2) + angular
 end
+
+"""
+    GaussianComponentSpinPrior(mu_chi_1, mu_chi_2, sigma_chi_1, sigma_chi_2, sigma_t, csi_spin)
+
+Component-spin analogue of Python `spinprior_default_gaussian`.
+"""
+struct GaussianComponentSpinPrior
+    g1::TruncatedGaussian
+    g2::TruncatedGaussian
+    aligned::TruncatedGaussian
+    csi_spin::Float64
+end
+GaussianComponentSpinPrior(mu_chi_1, mu_chi_2, sigma_chi_1, sigma_chi_2, sigma_t, csi_spin) =
+    GaussianComponentSpinPrior(TruncatedGaussian(mu_chi_1, sigma_chi_1, 0, 1),
+        TruncatedGaussian(mu_chi_2, sigma_chi_2, 0, 1), TruncatedGaussian(1, sigma_t, -1, 1), float(csi_spin))
+function logpdf(p::GaussianComponentSpinPrior, chi1, chi2, cos1, cos2)
+    return logpdf(p.g1, chi1) + logpdf(p.g2, chi2) + _component_spin_angular_logpdf(p.aligned, p.csi_spin, cos1, cos2)
+end
+
+"""
+    EvolvingGaussianSpinPrior(mu_chi, sigma_chi, mu_dot, sigma_dot, sigma_t, csi_spin)
+
+Mass-dependent Gaussian component-spin prior matching Python
+`spinprior_default_evolving_gaussian`.
+"""
+struct EvolvingGaussianSpinPrior
+    mu_chi::Float64
+    sigma_chi::Float64
+    mu_dot::Float64
+    sigma_dot::Float64
+    sigma_t::Float64
+    aligned::TruncatedGaussian
+    csi_spin::Float64
+end
+EvolvingGaussianSpinPrior(mu_chi, sigma_chi, mu_dot, sigma_dot, sigma_t, csi_spin) =
+    EvolvingGaussianSpinPrior(float(mu_chi), float(sigma_chi), float(mu_dot), float(sigma_dot),
+        float(sigma_t), TruncatedGaussian(1, sigma_t, -1, 1), float(csi_spin))
+function logpdf(p::EvolvingGaussianSpinPrior, chi1, chi2, cos1, cos2, mass1_source, mass2_source)
+    sigma1 = p.sigma_chi + p.sigma_dot * mass1_source
+    sigma2 = p.sigma_chi + p.sigma_dot * mass2_source
+    sigma1 > 0 && sigma2 > 0 || return -Inf
+    g1 = TruncatedGaussian(p.mu_chi + p.mu_dot * mass1_source, sigma1, 0, 1)
+    g2 = TruncatedGaussian(p.mu_chi + p.mu_dot * mass2_source, sigma2, 0, 1)
+    return logpdf(g1, chi1) + logpdf(g2, chi2) + _component_spin_angular_logpdf(p.aligned, p.csi_spin, cos1, cos2)
+end
+
+"""
+    BetaWindowGaussianSpinPrior(mt, delta_mt, mix_f, alpha_chi, beta_chi, mu_chi, sigma_chi, sigma_t, csi_spin)
+
+Mass-window mixture between a beta spin-magnitude prior and a truncated
+Gaussian spin-magnitude prior.
+"""
+struct BetaWindowGaussianSpinPrior
+    mt::Float64
+    delta_mt::Float64
+    mix_f::Float64
+    beta::BetaDistribution
+    gaussian::TruncatedGaussian
+    aligned::TruncatedGaussian
+    csi_spin::Float64
+end
+function BetaWindowGaussianSpinPrior(mt, delta_mt, mix_f, alpha_chi, beta_chi, mu_chi, sigma_chi, sigma_t, csi_spin)
+    alpha_chi > 1 && beta_chi > 1 || throw(ArgumentError("alpha_chi and beta_chi must be greater than 1"))
+    return BetaWindowGaussianSpinPrior(float(mt), float(delta_mt), float(mix_f), BetaDistribution(alpha_chi, beta_chi),
+        TruncatedGaussian(mu_chi, sigma_chi, 0, 1), TruncatedGaussian(1, sigma_t, -1, 1), float(csi_spin))
+end
+_spin_window_weight(p, mass) = mixed_double_sigmoid_function(mass, p.mix_f, 0.0, p.mt, p.delta_mt)
+function _mixture_logpdf(weight, p1, p2, x)
+    return logaddexp(log(weight) + logpdf(p1, x), log1p(-weight) + logpdf(p2, x))
+end
+function logpdf(p::BetaWindowGaussianSpinPrior, chi1, chi2, cos1, cos2, mass1_source, mass2_source)
+    w1 = _spin_window_weight(p, mass1_source)
+    w2 = _spin_window_weight(p, mass2_source)
+    0 <= w1 <= 1 && 0 <= w2 <= 1 || return -Inf
+    return _mixture_logpdf(w1, p.beta, p.gaussian, chi1) +
+        _mixture_logpdf(w2, p.beta, p.gaussian, chi2) +
+        _component_spin_angular_logpdf(p.aligned, p.csi_spin, cos1, cos2)
+end
+
+"""
+    BetaWindowBetaSpinPrior(...)
+
+Mass-window mixture between two beta spin-magnitude priors.
+"""
+struct BetaWindowBetaSpinPrior
+    mt::Float64
+    delta_mt::Float64
+    mix_f::Float64
+    beta_low::BetaDistribution
+    beta_high::BetaDistribution
+    aligned::TruncatedGaussian
+    csi_spin::Float64
+end
+function BetaWindowBetaSpinPrior(mt, delta_mt, mix_f, alpha_chi_low, beta_chi_low,
+    alpha_chi_high, beta_chi_high, sigma_t, csi_spin)
+    alpha_chi_low > 1 && beta_chi_low > 1 && alpha_chi_high > 1 && beta_chi_high > 1 ||
+        throw(ArgumentError("beta shape parameters must be greater than 1"))
+    return BetaWindowBetaSpinPrior(float(mt), float(delta_mt), float(mix_f),
+        BetaDistribution(alpha_chi_low, beta_chi_low), BetaDistribution(alpha_chi_high, beta_chi_high),
+        TruncatedGaussian(1, sigma_t, -1, 1), float(csi_spin))
+end
+function logpdf(p::BetaWindowBetaSpinPrior, chi1, chi2, cos1, cos2, mass1_source, mass2_source)
+    w1 = _spin_window_weight(p, mass1_source)
+    w2 = _spin_window_weight(p, mass2_source)
+    0 <= w1 <= 1 && 0 <= w2 <= 1 || return -Inf
+    return _mixture_logpdf(w1, p.beta_low, p.beta_high, chi1) +
+        _mixture_logpdf(w2, p.beta_low, p.beta_high, chi2) +
+        _component_spin_angular_logpdf(p.aligned, p.csi_spin, cos1, cos2)
+end
+
+"""
+    PSEOBGaussianPrior(mu_domega220, sigma_domega220, mu_dtau220, sigma_dtau220, rho_pseob)
+
+Bivariate Gaussian prior for pSEOB ringdown deviations.
+"""
+struct PSEOBGaussianPrior
+    pdf_evaluator::Bivariate2DGaussian
+end
+PSEOBGaussianPrior(mu_domega220, sigma_domega220, mu_dtau220, sigma_dtau220, rho_pseob) =
+    PSEOBGaussianPrior(Bivariate2DGaussian(x1min=-10, x1max=10, x1mean=mu_domega220,
+        x2min=-10, x2max=10, x2mean=mu_dtau220, x1variance=sigma_domega220^2,
+        x12covariance=rho_pseob * sigma_domega220 * sigma_dtau220, x2variance=sigma_dtau220^2))
+logpdf(p::PSEOBGaussianPrior, domega220, dtau220) = logpdf(p.pdf_evaluator, domega220, dtau220)
+
+"""
+    ECOTotallyReflectiveSpinPrior(alpha_chi, beta_chi, eps, f_eco, sigma_chi_eco; q=1)
+
+Spin-magnitude prior for the Python `spinprior_ECOs_totally_reflective` model.
+"""
+struct ECOTotallyReflectiveSpinPrior
+    q::Float64
+    beta::BetaDistribution
+    truncated_beta::TruncatedBetaDistribution
+    truncated_gaussian::TruncatedGaussian
+    chi_crit::Float64
+    f_eco::Float64
+    lambda_eco::Float64
+end
+_eco_chi_crit(eps, q) = pi * (1 + q) / (2abs(log(eps)))
+function ECOTotallyReflectiveSpinPrior(alpha_chi, beta_chi, eps, f_eco, sigma_chi_eco; q=1.0)
+    alpha_chi > 1 && beta_chi > 1 || throw(ArgumentError("alpha_chi and beta_chi must be greater than 1"))
+    0 <= f_eco <= 1 || throw(ArgumentError("f_eco must lie in [0, 1]"))
+    chi_crit = _eco_chi_crit(eps, q)
+    beta = BetaDistribution(alpha_chi, beta_chi)
+    truncated_beta = TruncatedBetaDistribution(alpha_chi, beta_chi, chi_crit)
+    truncated_gaussian = TruncatedGaussian(chi_crit, sigma_chi_eco, 0, chi_crit)
+    lambda_eco = 1 - cdf(beta, chi_crit)
+    return ECOTotallyReflectiveSpinPrior(float(q), beta, truncated_beta, truncated_gaussian, chi_crit, float(f_eco), lambda_eco)
+end
+function _eco_spin_pdf(p::ECOTotallyReflectiveSpinPrior, chi)
+    eco = (1 - p.lambda_eco) * pdf(p.truncated_beta, chi) + p.lambda_eco * pdf(p.truncated_gaussian, chi)
+    return p.f_eco * eco + (1 - p.f_eco) * pdf(p.beta, chi)
+end
+function logpdf(p::ECOTotallyReflectiveSpinPrior, chi1, chi2)
+    p1 = _eco_spin_pdf(p, chi1)
+    p2 = _eco_spin_pdf(p, chi2)
+    p1 > 0 && p2 > 0 || return -Inf
+    return log(p1) + log(p2)
+end
+
+logpdf(p::DefaultSpinPrior, chi1::AbstractArray, chi2::AbstractArray, cos1::AbstractArray, cos2::AbstractArray) =
+    map((a, b, c, d) -> logpdf(p, a, b, c, d), chi1, chi2, cos1, cos2)
+logpdf(p::GaussianComponentSpinPrior, chi1::AbstractArray, chi2::AbstractArray, cos1::AbstractArray, cos2::AbstractArray) =
+    map((a, b, c, d) -> logpdf(p, a, b, c, d), chi1, chi2, cos1, cos2)
+logpdf(p::EvolvingGaussianSpinPrior, chi1::AbstractArray, chi2::AbstractArray, cos1::AbstractArray, cos2::AbstractArray,
+    mass1_source::AbstractArray, mass2_source::AbstractArray) =
+    map((a, b, c, d, e, f) -> logpdf(p, a, b, c, d, e, f), chi1, chi2, cos1, cos2, mass1_source, mass2_source)
+logpdf(p::BetaWindowGaussianSpinPrior, chi1::AbstractArray, chi2::AbstractArray, cos1::AbstractArray, cos2::AbstractArray,
+    mass1_source::AbstractArray, mass2_source::AbstractArray) =
+    map((a, b, c, d, e, f) -> logpdf(p, a, b, c, d, e, f), chi1, chi2, cos1, cos2, mass1_source, mass2_source)
+logpdf(p::BetaWindowBetaSpinPrior, chi1::AbstractArray, chi2::AbstractArray, cos1::AbstractArray, cos2::AbstractArray,
+    mass1_source::AbstractArray, mass2_source::AbstractArray) =
+    map((a, b, c, d, e, f) -> logpdf(p, a, b, c, d, e, f), chi1, chi2, cos1, cos2, mass1_source, mass2_source)
+logpdf(p::ECOTotallyReflectiveSpinPrior, chi1::AbstractArray, chi2::AbstractArray) =
+    map((a, b) -> logpdf(p, a, b), chi1, chi2)
 
 """
     GaussianSpinPrior(mu_chi_eff, sigma_chi_eff, mu_chi_p, sigma_chi_p, rho)

@@ -62,9 +62,9 @@ complete until the final review checklist proves full scientific coverage.
 - `conversions.py`: `ligo_skymap`, HEALPix coordinate helpers, and joint
   effective-spin KDE helpers.
 - `priors.py` and `wrappers.py`: standalone advanced priors, including
-  evolving smoothers, bivariate Gaussian, and absolute-luminosity priors, are
-  implemented with fixture coverage. Dip/bin/Farah wrapper compositions and
-  extended spin families remain.
+  evolving smoothers, bivariate Gaussian, absolute-luminosity priors, and
+  extended spin families, are implemented with fixture coverage. Dip/bin/Farah
+  wrapper compositions remain.
 - `simulation.py`: detector/source-frame SNR helpers, measurement-noise
   helpers, flat-SNR scaling, deterministic quick likelihood factors, and
   frequency/SNR cuts are implemented with fixture coverage. The large
