@@ -1,6 +1,7 @@
 using Icarogw
 using CSV
 using DataFrames
+using FITSIO
 using Random
 using Test
 
@@ -56,6 +57,69 @@ end
     @test chi_effective_prior_from_aligned_spins(0.8, 1.0, 0.0) > 0
     @test chi_effective_prior_from_isotropic_spins(0.8, 1.0, 0.0) > 0
     @test chi_p_prior_from_isotropic_spins(0.8, 1.0, 0.3) > 0
+end
+
+@testset "skymap and HEALPix helpers" begin
+    @test healpix_level_to_nside(0) == 1
+    @test healpix_level_to_nside(3) == 8
+    @test healpix_nside_to_level(8) == 3
+    @test_throws ArgumentError healpix_nside_to_level(3)
+    @test uniq_to_level_ipix(level_ipix_to_uniq(2, 7)) == (2, 7)
+
+    ra = [0.1, 1.2, 2.4, 5.8]
+    dec = [0.4, -0.2, 0.8, -1.0]
+    pix = radec2indeces(ra, dec, 4; nest=true)
+    pix0 = radec2indeces(ra, dec, 4; nest=true, zero_based=true)
+    @test pix0 == pix .- 1
+    ra_center, dec_center = indices2radec(pix, 4; nest=true)
+    @test length(ra_center) == length(ra)
+    @test all(0 .<= ra_center .< 2pi)
+    @test all(-pi / 2 .<= dec_center .<= pi / 2)
+
+    counts_map, area = radec2skymap(ra, dec, 4; nest=true)
+    @test length(counts_map) == 12 * 4^2
+    @test area ≈ 4pi / length(counts_map)
+    @test sum(counts_map) * area ≈ 1.0
+
+    level = 1
+    nside = healpix_level_to_nside(level)
+    uniq = [level_ipix_to_uniq(level, ipix) for ipix in 0:(12 * nside^2 - 1)]
+    moc = MOCMap(collect(1:length(uniq)), uniq)
+    rows = get_NUNIQ_pixel(moc, ra, dec)
+    @test rows == radec2indeces(ra, dec, nside; nest=true)
+    @test get_NUNIQ_pixel(moc, first(ra), first(dec)) == first(rows)
+
+    probdensity = fill(inv(4pi), length(uniq))
+    distmu = fill(100.0, length(uniq))
+    distsigma = fill(10.0, length(uniq))
+    sky = LigoSkyMap(uniq, probdensity, distmu, distsigma)
+    intersect_em_pe(sky, ra, dec)
+    @test sky.intersected
+    @test sky.matched_rows == rows
+    dl = fill(100.0, length(ra))
+    ppost = evaluate_3d_posterior_intersected(sky, dl)
+    expected_pdl = inv((2pi * 10.0^2)^2)
+    @test ppost ≈ fill(inv(4pi) * expected_pdl, length(ra))
+    skymap_area = pixel_area(nside)
+    @test evaluate_3d_likelihood_intersected(sky, dl) ≈ ppost .* skymap_area ./ (dl .^ 2)
+    ppost2, plike2 = evaluate_3d_posterior_likelihood(sky, dl, ra, dec)
+    @test ppost2 ≈ ppost
+    @test plike2 ≈ evaluate_3d_likelihood_intersected(sky, dl)
+    draws = sample_3d_space(MersenneTwister(7), sky, 6)
+    @test length.(draws) == (6, 6, 6)
+    @test all(isfinite, draws[1])
+
+    mktempdir() do dir
+        path = joinpath(dir, "toy_skymap.fits")
+        FITS(path, "w") do f
+            FITSIO.write(f, ["UNIQ", "PROBDENSITY", "DISTMU", "DISTSIGMA"],
+                [uniq, probdensity, distmu, distsigma])
+        end
+        from_fits = ligo_skymap(path)
+        @test from_fits.uniq == uniq
+        @test from_fits.probdensity == probdensity
+        @test evaluate_3d_posterior_likelihood(from_fits, dl, ra, dec)[1] ≈ ppost
+    end
 end
 
 @testset "reference fixtures" begin
@@ -724,6 +788,8 @@ end
     end
 
     @test any((audit.python_module .== "catalog.py") .& (audit.status .== "missing") .& (audit.fixture_priority .== "high"))
+    @test any((audit.python_module .== "conversions.py") .& (audit.python_api .== "ligo_skymap") .& (audit.status .== "partial"))
+    @test any((audit.python_module .== "conversions.py") .& occursin.("radec2skymap", audit.python_api) .& (audit.status .== "implemented"))
     @test any((audit.python_module .== "stochastic.py") .& (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))
     @test any((audit.python_module .== "omega_gw.py") .& (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))
     @test any((audit.python_module .== "likelihood.py") .& (audit.status .== "partial") .& (audit.next_phase .== "stochastic"))

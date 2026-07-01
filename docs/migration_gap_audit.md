@@ -64,9 +64,10 @@ complete until the final review checklist proves full scientific coverage.
   counterpart redshift-column attachment, non-catalog cuts,
   effective-sample-size, expected-detection, and reweighting helpers are
   implemented as pure Julia functions.
-- `conversions.py`: `ligo_skymap` and HEALPix coordinate helpers remain.
-  Joint effective-spin KDE helpers are now covered by RNG-explicit Julia
-  implementations.
+- `conversions.py`: HEALPix coordinate helpers and the first `LigoSkyMap`
+  multi-order FITS/NUNIQ workspace are implemented. Catalog/EM workflows still
+  need to consume those skymap primitives. Joint effective-spin KDE helpers are
+  covered by RNG-explicit Julia implementations.
 - `priors.py` and `wrappers.py`: standalone advanced priors, extended spin
   families, and dependency-free dip/Farah/bin/multi-peak paired mass wrapper
   compositions are implemented with fixture coverage. Redshift-linear mixture
@@ -100,7 +101,7 @@ reproducing a bug.
 
 Stop and ask before:
 
-- adding a major dependency with unclear Julia 1.10 support,
+- adding another major dependency with unclear Julia 1.10 support,
 - relying on an external tool as part of the normal Julia package workflow,
 - treating ambiguous Python behavior as normative,
 - using data with unclear license or authentication requirements,

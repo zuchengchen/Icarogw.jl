@@ -16,4 +16,5 @@ Set `ICAROGW_INTEGRATION_CACHE` to override the cache location. Set
 are registered.
 
 The current runner is a scaffold. Concrete suites should be added as catalog,
-skymap, stochastic/OmegaGW, and joint-likelihood features are implemented.
+public skymap, stochastic/OmegaGW, and joint-likelihood workflows become ready
+for public-data coverage.

@@ -78,8 +78,9 @@ also native Julia. `KCorrection` and `DeprecatedKCorrection` cover Python
 `kcorr` and `kcorr_dep`; `LegacyGalaxyLuminosityFunction` covers Python
 `galaxy_MF_dep`; `em_likelihood_prior_differential_volume` covers the EM
 redshift likelihood-prior helper for `uniform`, `gaussian`, and
-`gaussian_nocom` modes. Full catalog/skymap workflows still require a
-FITS/HEALPix/NUNIQ dependency and API decision.
+`gaussian_nocom` modes. The first FITS/HEALPix/NUNIQ skymap core now exists;
+full catalog workflows still need runtime catalog types and rate/likelihood
+integration.
 
 ## Model Composition
 
@@ -103,8 +104,20 @@ rate model instead of duplicating every Python spin wrapper class.
 Dependency-light posterior workflows are pure Julia functions. `build_parallel_posterior`
 creates the matrix workspace used by Python `posterior_samples_catalog`, while
 `add_counterpart` attaches EM redshift samples as a `z_EM` column. Sky-direction
-filtering and catalog pixelization still belong to the future skymap/catalog
-runtime because they require FITS/HEALPix/NUNIQ choices.
+filtering and catalog pixelization still belong to the catalog runtime phase,
+but the FITS/HEALPix/NUNIQ dependency decision has landed through the skymap
+core.
+
+## Skymap Core
+
+Julia uses `FITSIO.jl` and `Healpix.jl` for the first skymap runtime layer.
+`radec2skymap`, `radec2indeces`, and `indices2radec` cover Python's HEALPix
+coordinate helpers, with Julia 1-based indexing by default and an explicit
+`zero_based=true` compatibility mode. `LigoSkyMap` reads multi-order FITS
+tables with `UNIQ`, `PROBDENSITY`, `DISTMU`, and `DISTSIGMA`, implements the
+minimal NUNIQ/MOC lookup needed by Python catalog workflows, and evaluates the
+Python-compatible 3D posterior/likelihood. Full catalog and EM rate workflows
+remain a separate phase that will consume these primitives.
 
 ## Stochastic Data
 

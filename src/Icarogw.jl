@@ -2,6 +2,7 @@ module Icarogw
 
 include("Utils.jl")
 include("Cosmology.jl")
+include("SkyMaps.jl")
 include("Conversions.jl")
 include("Priors.jl")
 include("Rates.jl")
@@ -16,6 +17,7 @@ include("OmegaGW.jl")
 
 using .Utils
 using .Cosmology
+using .SkyMaps
 using .Conversions
 using .Priors
 using .Rates
@@ -95,6 +97,29 @@ export COST_C,
     chi_p_prior_from_isotropic_spins,
     chi_p_prior_given_chi_eff_q,
     joint_prior_from_isotropic_spins,
+    MOCMap,
+    LigoSkyMap,
+    ligo_skymap,
+    healpix_level_to_nside,
+    healpix_nside_to_level,
+    uniq_to_level_ipix,
+    level_ipix_to_uniq,
+    radec2skymap,
+    radec2indeces,
+    radec2indices,
+    indices2radec,
+    pixel_area,
+    intersect_em_pe!,
+    intersect_em_pe,
+    intersect_EM_PE,
+    evaluate_3d_posterior_intersected,
+    evaluate_3d_likelihood_intersected,
+    evaluate_3d_posterior_likelihood,
+    evaluate_3D_posterior_intersected,
+    evaluate_3D_likelihood_intersected,
+    evaluate_3D_posterior_likelihood,
+    sample_3d_space,
+    get_NUNIQ_pixel,
     AbstractPrior,
     PowerLaw,
     BetaDistribution,

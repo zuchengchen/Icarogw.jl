@@ -38,3 +38,16 @@ println("catalog formula helpers")
 display(@benchmark $kc($zgrid))
 display(@benchmark background_effective_galaxy_density($legacy_lf, [-26.0, -22.0, -18.0]))
 display(@benchmark em_likelihood_prior_differential_volume($zgrid, 0.1, 0.03, $catalog_cosmology; ptype="gaussian"))
+
+ra = collect(range(0.0, 2pi; length=64))
+dec = collect(range(-1.0, 1.0; length=64))
+skymap_nside = 4
+skymap_level = healpix_nside_to_level(skymap_nside)
+skymap_uniq = [level_ipix_to_uniq(skymap_level, ipix) for ipix in 0:(12 * skymap_nside^2 - 1)]
+toy_skymap = LigoSkyMap(skymap_uniq, fill(inv(4pi), length(skymap_uniq)),
+    fill(100.0, length(skymap_uniq)), fill(10.0, length(skymap_uniq)))
+dl = fill(100.0, length(ra))
+
+println("skymap core")
+display(@benchmark radec2skymap($ra, $dec, $skymap_nside; nest=true))
+display(@benchmark evaluate_3d_posterior_likelihood($toy_skymap, $dl, $ra, $dec))

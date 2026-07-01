@@ -1,6 +1,7 @@
 module Conversions
 
 using ..Cosmology
+using ..SkyMaps
 using Distributions
 using QuadGK
 using Random
@@ -28,7 +29,14 @@ export cred_interval,
     chi_effective_prior_from_isotropic_spins,
     chi_p_prior_from_isotropic_spins,
     chi_p_prior_given_chi_eff_q,
-    joint_prior_from_isotropic_spins
+    joint_prior_from_isotropic_spins,
+    radec2skymap,
+    radec2indeces,
+    radec2indices,
+    indices2radec,
+    MOCMap,
+    LigoSkyMap,
+    ligo_skymap
 
 """
     cred_interval(sigma)
@@ -37,6 +45,14 @@ Convert a symmetric Gaussian error width in units of `sigma` to enclosed
 credible probability.
 """
 cred_interval(sigma::Real) = cdf(Normal(), sigma) - cdf(Normal(), -sigma)
+
+const radec2skymap = SkyMaps.radec2skymap
+const radec2indeces = SkyMaps.radec2indeces
+const radec2indices = SkyMaps.radec2indices
+const indices2radec = SkyMaps.indices2radec
+const MOCMap = SkyMaps.MOCMap
+const LigoSkyMap = SkyMaps.LigoSkyMap
+const ligo_skymap = SkyMaps.ligo_skymap
 
 """
     chirp_mass(m1, m2)

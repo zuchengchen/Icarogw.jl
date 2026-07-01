@@ -57,7 +57,8 @@ Status meanings:
 | `chi_p_prior_from_isotropic_spins` | same name | implemented | Native maximum-distribution density. |
 | `joint_prior_from_isotropic_spins`, `chi_p_prior_given_chi_eff_q` | same names | implemented | RNG-explicit Monte Carlo and weighted KDE helpers. |
 | `chi_eff_from_spins`, `chi_p_from_spins`, `cartestianspins2chis` | `chi_eff_from_spins`, `chi_p_from_spins`, `cartesian_spins_to_chis` | implemented/renamed | Core spin conversions. |
-| skymap/HEALPix helpers | catalog/skymap future module | planned | Requires FITS/HEALPix/NUNIQ dependency decision. |
+| `radec2skymap`, `radec2indeces`, `indices2radec` | same names plus `radec2indices` | implemented/renamed | Backed by `Healpix.jl`; Julia indices are 1-based by default with `zero_based=true` for Python compatibility. |
+| `ligo_skymap` | `LigoSkyMap`, `ligo_skymap` | partial | FITSIO/Healpix-backed multi-order `UNIQ` skymap reader with distance layers, 3D posterior/likelihood, and sampling; catalog/EM integration remains pending. |
 
 ## priors.py and wrappers.py
 
@@ -117,8 +118,8 @@ Status meanings:
 | `effective_injections_number`, PE effective number | `effective_sample_size` | implemented/renamed | Works from log weights or model+container. |
 | `expected_number_detections` | `expected_number_detections` | implemented | Uses injection pseudo-rate convention. |
 | `update_cut`, `reweight_PE`, `return_reweighted_injections` | `subset_injections`, `subset_posterior_samples`, `reweight_posterior_samples`, `reweight_injections` | implemented/renamed | RNG-explicit pure helpers. |
-| `posterior_samples.add_counterpart` | `add_counterpart` | implemented/renamed | Dependency-light `z_EM` column attachment; sky-direction filtering remains skymap-dependent. |
-| pixelization/catalog methods | catalog/skymap future module | planned | Requires FITS/HEALPix/NUNIQ dependency decision. |
+| `posterior_samples.add_counterpart` | `add_counterpart` | implemented/renamed | Dependency-light `z_EM` column attachment; sky-direction filtering will consume the new skymap/catalog primitives in a later phase. |
+| pixelization/catalog methods | catalog/skymap future module | planned | HEALPix/NUNIQ primitives exist; posterior/injection container integration remains pending. |
 
 ## likelihood.py
 
@@ -152,7 +153,7 @@ Status meanings:
 | `kcorr`, `kcorr_dep` | `KCorrection`, `DeprecatedKCorrection` | implemented/renamed | Modern and legacy dependency-light K-correction formulas with Python fixture coverage. |
 | `galaxy_MF_dep` | `LegacyGalaxyLuminosityFunction`, `galaxy_MF_dep` | implemented/renamed | Legacy W1/K/bJ Schechter helper with Python fixture coverage; `GalaxyLuminosityFunction` remains preferred for new code. |
 | `EM_likelihood_prior_differential_volume` | `em_likelihood_prior_differential_volume`, `EM_likelihood_prior_differential_volume` | implemented/renamed | Uniform, gaussian, and gaussian-without-comoving-volume redshift helper with fixture coverage. |
-| galaxy catalog / EM counterpart runtime APIs | `Catalog.catalog_planned` | planned | Pixelated catalog, skymap, and counterpart workflows still require catalog/skymap dependency decisions. |
+| galaxy catalog / EM counterpart runtime APIs | `Catalog.catalog_planned` | planned | Pixelated catalog and counterpart workflows should consume the new skymap primitives; catalog runtime design remains pending. |
 | stochastic background APIs | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw`, `StochasticData`, `read_stochastic_csv`, `read_stochastic_hdf5`, `stochastic_loglikelihood` | implemented/renamed | Energy spectrum, omega weights, vanilla spectral-siren helper, Gaussian stochastic likelihood, and simple freqs/Cf/sigma2s readers are implemented. |
 | `Omega_GW` helpers | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw`, `joint_loglikelihood` | implemented/merged | Duplicate Python `stochastic.py`/`omega_gw.py` formulas are unified in Julia with a vanilla CBC+stochastic helper. |
 | `utils.check_posterior_samples_and_prior` | `check_posterior_samples_and_prior` | implemented | Non-Condor validation helper. |
