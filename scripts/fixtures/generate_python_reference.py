@@ -316,6 +316,8 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
     log_rate_2 = np.array([-9.5, -12.0, -12.0])
     lambda_pop = 0.35
     mixed_rate = np.logaddexp(np.log(lambda_pop) + log_rate_1, np.log1p(-lambda_pop) + log_rate_2)
+    m1_pair = np.array([12.0, 20.0, 35.0])
+    m2_pair = np.array([8.0, 12.0, 6.0])
     chi1 = np.array([0.2, 0.45, 0.7])
     chi2 = np.array([0.3, 0.35, 0.6])
     cos1 = np.array([0.4, 0.1, -0.2])
@@ -360,6 +362,33 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
     spin_beta_beta_logpdf = spin_beta_beta.log_pdf(chi1, chi2, cos1, cos2, mass1_source, mass2_source)
     pseob_logpdf = pseob.log_pdf(domega220, dtau220)
     eco_logpdf = eco.log_pdf(chi1, chi2)
+
+    np.random.seed(123)
+    wrapper_powerlaw = wrappers.massprior_PowerLaw()
+    paired_dip = wrappers.m1m2_paired_massratio_dip(wrapper_powerlaw)
+    paired_dip.update(alpha=2.0, mmin=5.0, mmax=60.0, beta=1.2,
+                      bottomsmooth=2.0, topsmooth=5.0, leftdip=10.0, rightdip=20.0,
+                      leftdipsmooth=2.0, rightdipsmooth=3.0, deep=0.4)
+    paired_dip_logpdf = paired_dip.log_pdf(m1_pair, m2_pair)
+
+    np.random.seed(124)
+    wrapper_powerlaw_general = wrappers.massprior_PowerLaw()
+    paired_dip_general = wrappers.m1m2_paired_massratio_dip_general(wrapper_powerlaw_general)
+    paired_dip_general.update(alpha=2.0, mmin=5.0, mmax=60.0, beta_bottom=0.5, beta_top=2.0,
+                              bottomsmooth=2.0, topsmooth=5.0, leftdip=10.0, rightdip=20.0,
+                              leftdipsmooth=2.0, rightdipsmooth=3.0, deep=0.4)
+    paired_dip_general_logpdf = paired_dip_general.log_pdf(m1_pair, m2_pair)
+
+    np.random.seed(125)
+    paired_farah = wrappers.m1m2_paired_massratio_bpl_dip_farah_2022()
+    paired_farah.update(alpha_1=1.5, alpha_2=3.0, mmin=5.0, mmax=60.0, beta_bottom=0.5, beta_top=2.0,
+                        bottomsmooth=2.0, topsmooth=5.0, leftdip=12.0, rightdip=24.0,
+                        leftdipsmooth=2.0, rightdipsmooth=3.0, deep=0.4)
+    paired_farah_logpdf = paired_farah.log_pdf(m1_pair, m2_pair)
+
+    bin_model = wrappers.massprior_BinModel2d(2)
+    bin_model.update(mmin=5.0, mmax=45.0, bin_0=1.0, bin_1=2.0, bin_2=3.0)
+    bin_model_logpdf = bin_model.log_pdf(m1_pair, m2_pair)
     for i in range(len(xs)):
         rows.append(
             {
@@ -381,6 +410,12 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
                 "log_rate_2": log_rate_2[i],
                 "lambda_pop": lambda_pop,
                 "mixed_log_rate": mixed_rate[i],
+                "m1_pair": m1_pair[i],
+                "m2_pair": m2_pair[i],
+                "paired_dip_logpdf": paired_dip_logpdf[i],
+                "paired_dip_general_logpdf": paired_dip_general_logpdf[i],
+                "paired_farah_logpdf": paired_farah_logpdf[i],
+                "bin_model_logpdf": bin_model_logpdf[i],
                 "chi1": chi1[i],
                 "chi2": chi2[i],
                 "cos1": cos1[i],
@@ -420,6 +455,12 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
             "log_rate_2",
             "lambda_pop",
             "mixed_log_rate",
+            "m1_pair",
+            "m2_pair",
+            "paired_dip_logpdf",
+            "paired_dip_general_logpdf",
+            "paired_farah_logpdf",
+            "bin_model_logpdf",
             "chi1",
             "chi2",
             "cos1",

@@ -72,8 +72,10 @@ Status meanings:
 | `BrokenPowerLawTripleMultiPeak` | same name | implemented | Broken law plus three peaks. |
 | `conditional_2dimpdf` | `ConditionalMassDistribution` | implemented/renamed | Conditional `m2 <= m1`. |
 | `conditional_2dimz_pdf` | `RedshiftConditionalMassDistribution` | implemented/renamed | Redshift-dependent primary `p(m1|z)` with conditional secondary. |
-| `paired_2dimpdf` | `PairedMassDistribution` | implemented/renamed | Pairing by mass ratio power. |
+| `paired_2dimpdf` | `PairedMassDistribution`, `GeneralPairedMassDistribution` | implemented/renamed | Pairing by mass-ratio power or a custom pairing function. |
 | `piecewise_constant_2d_distribution_normalized` | `PiecewiseConstant2D` | implemented/renamed | Triangular checkerboard. |
+| `m1m2_paired_massratio_dip`, `m1m2_paired_massratio_dip_general`, `m1m2_paired_massratio_bpl_dip_farah_2022` | `paired_massratio_dip`, `paired_massratio_dip_general`, `paired_massratio_bpl_dip_farah_2022` | implemented/renamed | Dependency-free dip/Farah paired mass wrapper constructors with Python reference fixtures. |
+| `massprior_BinModel2d` | `bin_model_2d` | implemented/renamed | Convenience constructor around `PiecewiseConstant2D`. |
 | `_lowpass_filter`, `_highpass_filter`, `_notch_filter`, `_mixed_linear_function`, `_mixed_double_sigmoid_function` | `lowpass_filter`, `highpass_filter`, `notch_filter`, `mixed_linear_function`, `mixed_double_sigmoid_function` | implemented/renamed | Helper-level formulas covered by fixture. |
 | low-pass / dip smoothers | `LowpassSmoothedProb`, `LowpassSmoothedProbEvolving`, `SmoothedPlusDipProb` | implemented | Evolving smoother follows Python's fixed-grid normalization; non-evolving smoother keeps native numerical normalization. |
 | `Bivariate2DGaussian` | `Bivariate2DGaussian` | implemented | Truncated marginal plus conditional Gaussian. |

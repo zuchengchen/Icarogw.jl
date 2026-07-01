@@ -133,6 +133,22 @@ end
     abs_lum = AbsLuminosityPowerLawInMagnitude(-23.0, -16.0, -1.1)
     @test logpdf(abs_lum, priors_rates_ref.M_abs) ≈ priors_rates_ref.abs_l_powerlaw_logpdf rtol=2e-14
     @test cdf(abs_lum, priors_rates_ref.M_abs) ≈ priors_rates_ref.abs_l_powerlaw_cdf rtol=2e-14
+    pair_base = PowerLaw(5.0, 60.0, -2.0)
+    paired_dip = paired_massratio_dip(pair_base; beta=1.2, bottomsmooth=2.0, topsmooth=5.0,
+        leftdip=10.0, rightdip=20.0, leftdipsmooth=2.0, rightdipsmooth=3.0, deep=0.4)
+    @test logpdf(paired_dip, priors_rates_ref.m1_pair, priors_rates_ref.m2_pair) ≈
+          priors_rates_ref.paired_dip_logpdf atol=0.12
+    paired_general = paired_massratio_dip_general(pair_base; beta_bottom=0.5, beta_top=2.0,
+        bottomsmooth=2.0, topsmooth=5.0, leftdip=10.0, rightdip=20.0, leftdipsmooth=2.0, rightdipsmooth=3.0, deep=0.4)
+    @test logpdf(paired_general, priors_rates_ref.m1_pair, priors_rates_ref.m2_pair) ≈
+          priors_rates_ref.paired_dip_general_logpdf atol=0.12
+    paired_farah = paired_massratio_bpl_dip_farah_2022(alpha_1=1.5, alpha_2=3.0, mmin=5.0, mmax=60.0,
+        beta_bottom=0.5, beta_top=2.0, bottomsmooth=2.0, topsmooth=5.0, leftdip=12.0, rightdip=24.0,
+        leftdipsmooth=2.0, rightdipsmooth=3.0, deep=0.4)
+    @test logpdf(paired_farah, priors_rates_ref.m1_pair, priors_rates_ref.m2_pair) ≈
+          priors_rates_ref.paired_farah_logpdf atol=0.12
+    bin_model = bin_model_2d(5.0, 45.0, [1.0, 2.0, 3.0])
+    @test logpdf(bin_model, priors_rates_ref.m1_pair, priors_rates_ref.m2_pair) ≈ priors_rates_ref.bin_model_logpdf rtol=2e-14
     spin_gaussian = GaussianComponentSpinPrior(0.25, 0.35, 0.2, 0.25, 0.5, 0.4)
     @test logpdf(spin_gaussian, priors_rates_ref.chi1, priors_rates_ref.chi2,
         priors_rates_ref.cos1, priors_rates_ref.cos2) ≈ priors_rates_ref.spin_gaussian_logpdf rtol=2e-14
@@ -178,6 +194,9 @@ end
     @test isfinite(logpdf(mix, 35.0))
     @test absL_PL_inM === AbsLuminosityPowerLawInMagnitude
     @test_throws ArgumentError BetaWindowBetaSpinPrior(0.8, 0.2, 40.0, 1.0, 3.0, 4.0, 2.5, 0.5, 0.4)
+    @test_throws ArgumentError paired_massratio_bpl_dip_farah_2022(alpha_1=1.5, alpha_2=3.0, mmin=5.0, mmax=60.0,
+        beta_bottom=0.5, beta_top=2.0, bottomsmooth=2.0, topsmooth=5.0, leftdip=4.0, rightdip=24.0,
+        leftdipsmooth=2.0, rightdipsmooth=3.0, deep=0.4)
 
     cm = ConditionalMassDistribution(PowerLaw(5, 80, -2), PowerLaw(5, 80, 1))
     @test isfinite(logpdf(cm, 30.0, 20.0))

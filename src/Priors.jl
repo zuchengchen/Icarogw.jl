@@ -21,6 +21,7 @@ export AbstractPrior,
     ConditionalMassDistribution,
     RedshiftConditionalMassDistribution,
     PairedMassDistribution,
+    GeneralPairedMassDistribution,
     PiecewiseConstant2D,
     Bivariate2DGaussian,
     LowpassSmoothedProb,
@@ -33,6 +34,10 @@ export AbstractPrior,
     notch_filter,
     mixed_linear_function,
     mixed_double_sigmoid_function,
+    paired_massratio_dip,
+    paired_massratio_dip_general,
+    paired_massratio_bpl_dip_farah_2022,
+    bin_model_2d,
     PowerLawStationary,
     PowerLawLinear,
     GaussianStationary,
@@ -247,8 +252,7 @@ function BrokenPowerLaw(min, max, alpha1, alpha2, b)
 end
 function logpdf(p::BrokenPowerLaw, x::Real)
     _inrange(x, p.min, p.max) || return -Inf
-    return x <= p.break_point ? logpdf(p.pl1, x) - log(p.norm) :
-        logpdf(p.pl2, x) + log(p.ratio) - log(p.norm)
+    return logaddexp(logpdf(p.pl1, x), logpdf(p.pl2, x) + log(p.ratio)) - log(p.norm)
 end
 function cdf(p::BrokenPowerLaw, x::Real)
     x <= p.min && return 0.0
@@ -437,6 +441,37 @@ end
 pdf(p::PairedMassDistribution, m1::Real, m2::Real) = exp(logpdf(p, m1, m2))
 
 """
+    GeneralPairedMassDistribution(base, pairing_function)
+
+Two-dimensional paired mass distribution proportional to
+`base(m1) * base(m2) * pairing_function(m1, m2)`. The pairing function defines
+the triangular support by returning zero when a point is not allowed.
+"""
+struct GeneralPairedMassDistribution{P<:AbstractPrior,F} <: AbstractPrior
+    base::P
+    pairing_function::F
+    norm::Float64
+    min::Float64
+    max::Float64
+end
+function GeneralPairedMassDistribution(base::AbstractPrior, pairing_function; rtol::Real=1e-5)
+    lo = getfield(base, :min)
+    hi = getfield(base, :max)
+    inner(m1) = quadgk(m2 -> pdf(base, m2) * pairing_function(m1, m2), lo, hi; rtol=rtol)[1]
+    norm = quadgk(m1 -> pdf(base, m1) * inner(m1), lo, hi; rtol=rtol)[1]
+    norm > 0 && isfinite(norm) || throw(ArgumentError("invalid paired-mass normalization"))
+    return GeneralPairedMassDistribution(base, pairing_function, norm, lo, hi)
+end
+function logpdf(p::GeneralPairedMassDistribution, m1::Real, m2::Real)
+    base_log = logpdf(p.base, m1) + logpdf(p.base, m2)
+    isfinite(base_log) || return -Inf
+    pair = p.pairing_function(m1, m2)
+    pair > 0 && isfinite(pair) || return -Inf
+    return base_log + log(pair) - log(p.norm)
+end
+pdf(p::GeneralPairedMassDistribution, m1::Real, m2::Real) = exp(logpdf(p, m1, m2))
+
+"""
     PiecewiseConstant2D(min, max, weights)
 
 Normalized triangular checkerboard distribution for `(m1, m2)` with `m2 <= m1`.
@@ -480,6 +515,14 @@ function pdf(p::PiecewiseConstant2D, m1::Real, m2::Real)
     return k == 0 ? 0.0 : p.normalized[k]
 end
 logpdf(p::PiecewiseConstant2D, m1::Real, m2::Real) = (v = pdf(p, m1, m2); v > 0 ? log(v) : -Inf)
+
+"""
+    bin_model_2d(min, max, weights)
+
+Convenience constructor for Python `massprior_BinModel2d`-style triangular
+piecewise-constant mass priors.
+"""
+bin_model_2d(min, max, weights) = PiecewiseConstant2D(min, max, weights)
 
 _sigmoid_window(x, edge, delta, highpass::Bool) = delta == 0 ? 1.0 :
     highpass ? (x <= edge ? 0.0 : x >= edge + delta ? 1.0 :
@@ -746,6 +789,58 @@ function logpdf(p::SmoothedPlusDipProb, x::Real)
 end
 cdf(p::SmoothedPlusDipProb, x::Real) =
     x <= p.min ? 0.0 : x >= p.max ? 1.0 : quadgk(t -> pdf(p, t), p.min, x; rtol=1e-5)[1]
+
+function _dip_smoothed_base(base::AbstractPrior; bottomsmooth, topsmooth, leftdip, rightdip, leftdipsmooth, rightdipsmooth, deep)
+    return SmoothedPlusDipProb(base, bottomsmooth, topsmooth, leftdip, rightdip, leftdipsmooth, rightdipsmooth, deep)
+end
+
+"""
+    paired_massratio_dip(base; beta, bottomsmooth, topsmooth, leftdip, rightdip, leftdipsmooth, rightdipsmooth, deep)
+
+Python `m1m2_paired_massratio_dip` equivalent: smooth/dip a one-dimensional
+base mass prior and pair binaries with `q^beta`.
+"""
+function paired_massratio_dip(base::AbstractPrior; beta, bottomsmooth, topsmooth, leftdip, rightdip, leftdipsmooth, rightdipsmooth, deep)
+    smoothed = _dip_smoothed_base(base; bottomsmooth, topsmooth, leftdip, rightdip, leftdipsmooth, rightdipsmooth, deep)
+    return GeneralPairedMassDistribution(smoothed, _piecewise_q_pairing(beta, beta, Inf))
+end
+
+function _piecewise_q_pairing(beta_bottom, beta_top, break_mass)
+    return function (m1, m2)
+        q = m2 / m1
+        0 < q <= 1 || return 0.0
+        return m2 <= break_mass ? q^beta_bottom : q^beta_top
+    end
+end
+
+"""
+    paired_massratio_dip_general(base; beta_bottom, beta_top, ...)
+
+Python `m1m2_paired_massratio_dip_general` equivalent. The pairing exponent
+switches from `beta_bottom` to `beta_top` at `rightdip`, matching the Python
+wrapper's default split.
+"""
+function paired_massratio_dip_general(base::AbstractPrior; beta_bottom, beta_top, bottomsmooth, topsmooth,
+    leftdip, rightdip, leftdipsmooth, rightdipsmooth, deep, break_mass=rightdip)
+    smoothed = _dip_smoothed_base(base; bottomsmooth, topsmooth, leftdip, rightdip, leftdipsmooth, rightdipsmooth, deep)
+    return GeneralPairedMassDistribution(smoothed, _piecewise_q_pairing(beta_bottom, beta_top, break_mass))
+end
+
+"""
+    paired_massratio_bpl_dip_farah_2022(; alpha_1, alpha_2, mmin, mmax, ...)
+
+Python `m1m2_paired_massratio_bpl_dip_farah_2022` equivalent. The power-law
+slopes follow the Python wrapper convention, so the underlying
+`BrokenPowerLaw` receives `-alpha_1` and `-alpha_2`.
+"""
+function paired_massratio_bpl_dip_farah_2022(; alpha_1, alpha_2, mmin, mmax, beta_bottom, beta_top,
+    bottomsmooth, topsmooth, leftdip, rightdip, leftdipsmooth, rightdipsmooth, deep)
+    b = (leftdip - mmin) / (mmax - mmin)
+    0 < b < 1 || throw(ArgumentError("leftdip must define a break inside [mmin, mmax]"))
+    base = BrokenPowerLaw(mmin, mmax, -alpha_1, -alpha_2, b)
+    smoothed = _dip_smoothed_base(base; bottomsmooth, topsmooth, leftdip, rightdip, leftdipsmooth, rightdipsmooth, deep)
+    return GeneralPairedMassDistribution(smoothed, _piecewise_q_pairing(beta_bottom, beta_top, 5.0))
+end
 
 """
     PowerLawStationary(alpha, mmin, mmax)
