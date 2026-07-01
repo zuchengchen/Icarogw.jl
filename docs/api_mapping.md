@@ -96,6 +96,7 @@ Status meanings:
 | `CBC_rate_m1_given_redshift_m2` | `CBCVanillaRate` with `RedshiftConditionalMassDistribution` | implemented/merged | Detector `(m1, m2, dL)` with `p(m1|z)p(m2|m1)`. |
 | `CBC_mixte_pop_rate` | `MixtureRate` | implemented/renamed | Convex logaddexp mixture of two compatible rate models. |
 | spin variants | `SpinWeightedRate(base, spin_prior)` | implemented/merged | Composes component-spin, mass-dependent spin, pSEOB/ECO, or effective-spin priors with first-version CBC rate models; mass-dependent spin priors use explicit source-mass columns. |
+| `CBC_vanilla_rate_pseob` | `SpinWeightedRate(base, PSEOBGaussianPrior)` | partial/merged | Standard pSEOB weighting is supported; Python `_dummy` injection asymmetry is not yet a separate likelihood contract. |
 | catalog/EM counterpart rates | placeholder modules | planned | First-version exclusion. |
 | stochastic mixed rates | placeholder modules | planned | First-version exclusion. |
 

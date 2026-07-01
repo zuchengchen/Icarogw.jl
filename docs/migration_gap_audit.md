@@ -54,7 +54,8 @@ complete until the final review checklist proves full scientific coverage.
   readers and catalog/EM mixed stochastic likelihoods remain open.
 - `rates.py` and `likelihood.py`: catalog-aware rates, EM counterpart rates,
   full stochastic data-product support, and catalog/EM stochastic joint
-  likelihoods.
+  likelihoods. Standard pSEOB weighting composes through `SpinWeightedRate`,
+  while Python's pSEOB dummy injection asymmetry remains a specialized gap.
 - `posterior_samples.py` and `injections.py`: catalog/skymap pixelization,
   counterpart attachment, and catalog-aware workflows. Non-catalog cut,
   effective-sample-size, expected-detection, and reweighting helpers are

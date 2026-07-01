@@ -413,6 +413,12 @@ end
     @test log_event_rate(eff_rate, m1d, q, dl, 0.1, 0.3, prior) ≈
         log_event_rate(eff_rate.base, m1d, q, dl, prior) + logpdf(eff_prior, 0.1, 0.3)
 
+    pseob_prior = PSEOBGaussianPrior(0.1, 1.2, -0.2, 1.5, 0.25)
+    pseob_rate = SpinWeightedRate(spin_rate.base, pseob_prior)
+    @test pseob_rate.spin_columns == (:domega220, :dtau220)
+    @test log_event_rate(pseob_rate, m1d, m2d, dl, -0.2, 0.4, prior) ≈
+        log_event_rate(pseob_rate.base, m1d, m2d, dl, prior) + logpdf(pseob_prior, -0.2, 0.4)
+
     mixture = MixtureRate(
         CBCVanillaRate(c, ConditionalMassDistribution(mass, PowerLaw(5.0, 100.0, 1.0)), PowerLawRate(0.0); R0=1),
         CBCVanillaRate(c, ConditionalMassDistribution(mass, PowerLaw(5.0, 100.0, 1.0)), PowerLawRate(1.0); R0=1),
