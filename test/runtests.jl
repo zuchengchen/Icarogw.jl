@@ -904,6 +904,42 @@ end
         @test isfinite(log_injection_rate(skymap_rate, dl, row, prior))
     end
 
+    z_em = [0.11, 0.13, 0.15, 0.17]
+    em_z_gw = [0.10, 0.12, 0.14, 0.16]
+    em_mass = ConditionalMassDistribution(mass, PowerLaw(5.0, 100.0, 1.0))
+    em_rate = CBCVanillaEMCounterpartRate(c, em_mass, rate; R0=2.0)
+    em_ps = PosteriorSamples((mass_1=m1d .* [1.0, 1.02, 1.04, 1.06],
+        mass_2=m2d .* [1.0, 1.01, 1.02, 1.03],
+        luminosity_distance=luminosity_distance(c, em_z_gw),
+        z_EM=z_em,
+        prior=ones(4)); event_name=:event1)
+    em_inj = InjectionSet((mass_1=m1d .* [1.0, 1.02],
+        mass_2=m2d .* [1.0, 1.01],
+        luminosity_distance=luminosity_distance(c, em_z_gw[1:2]),
+        prior=ones(2)); ntotal=4, Tobs=1.0)
+    vanilla_for_inj = CBCVanillaRate(c, em_mass, rate; R0=2.0)
+    vanilla_inj_as_ps = PosteriorSamples((mass_1=m1d .* [1.0, 1.02],
+        mass_2=m2d .* [1.0, 1.01],
+        luminosity_distance=luminosity_distance(c, em_z_gw[1:2]),
+        prior=ones(2)))
+    @test all(isfinite, event_logweights(em_rate, em_ps))
+    @test injection_logweights(em_rate, em_inj) ≈ event_logweights(vanilla_for_inj, vanilla_inj_as_ps)
+    @test isfinite(loglikelihood(em_rate, PopulationData(PosteriorSampleSet(em_ps), em_inj)))
+
+    sky = LigoSkyMap(uniq, fill(inv(4pi), npix), fill(100.0, npix), fill(20.0, npix))
+    sky_em_rate = CBCLowLatencySkyMapEMCounterpartRate(c, rate, [sky]; R0=2.0)
+    sky_em_ps = PosteriorSamples((z_EM=z_em,
+        right_ascension=fill(0.2, length(z_em)),
+        declination=fill(0.1, length(z_em)),
+        prior=ones(length(z_em))); event_name=:event1)
+    sky_em_inj = InjectionSet((luminosity_distance=luminosity_distance(c, z_em[1:2]),
+        prior=ones(2)); ntotal=4, Tobs=1.0)
+    sky_em_logw = event_logweights(sky_em_rate, sky_em_ps)
+    @test all(isfinite, sky_em_logw)
+    @test all(==(first(sky_em_logw)), sky_em_logw)
+    @test all(isfinite, injection_logweights(sky_em_rate, sky_em_inj))
+    @test isfinite(loglikelihood(sky_em_rate, PopulationData(PosteriorSampleSet(sky_em_ps), sky_em_inj)))
+
     ps = PosteriorSamples((mass_1=[m1d], mass_ratio=[q], luminosity_distance=[dl], prior=[1.0]))
     inj = InjectionSet((mass_1=[m1d], mass_ratio=[q], luminosity_distance=[dl], prior=[1.0]); ntotal=10, Tobs=1)
     data = PopulationData(PosteriorSampleSet(ps), inj)
@@ -1063,7 +1099,7 @@ end
     @test any((audit.python_module .== "catalog.py") .& (audit.feature_area .== "catalog_preprocessing") .&
               (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))
     @test any((audit.python_module .== "rates.py") .& (audit.feature_area .== "em_rates") .&
-              (audit.status .== "missing") .& (audit.fixture_priority .== "high"))
+              (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))
     @test any((audit.python_module .== "conversions.py") .& (audit.python_api .== "ligo_skymap") .& (audit.status .== "partial"))
     @test any((audit.python_module .== "conversions.py") .& occursin.("radec2skymap", audit.python_api) .& (audit.status .== "implemented"))
     @test any((audit.python_module .== "stochastic.py") .& (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))

@@ -3,8 +3,11 @@ module Likelihood
 using Base.Threads
 using Random
 using StatsBase
+using ..Cosmology
 using ..DataContainers
+using ..Priors: logpdf
 using ..Rates
+using ..SkyMaps: evaluate_3d_posterior_likelihood
 using ..Utils: logsumexp
 
 export LikelihoodOptions,
@@ -70,6 +73,8 @@ _required_columns(::CBCTotalMassQRate) = (:total_mass, :mass_ratio, :luminosity_
 _required_columns(::CBCRedshiftPrimaryQRate) = (:mass_1, :mass_ratio, :luminosity_distance)
 _required_columns(::CBCCatalogVanillaRate) = (:mass_1, :mass_2, :luminosity_distance, :sky_indices)
 _required_columns(::CBCCatalogSkyMapRate) = (:luminosity_distance, :sky_indices)
+_required_columns(::CBCVanillaEMCounterpartRate) = (:mass_1, :mass_2, :luminosity_distance, :z_EM)
+_required_columns(::CBCLowLatencySkyMapEMCounterpartRate) = (:z_EM, :right_ascension, :declination)
 _required_columns(model::SpinWeightedRate) = (_required_columns(model.base)..., model.spin_columns...)
 function _required_columns(model::MixtureRate)
     cols1 = _required_columns(model.rate1)
@@ -77,9 +82,50 @@ function _required_columns(model::MixtureRate)
     cols1 == cols2 || throw(ArgumentError("MixtureRate components must use the same event columns for likelihood evaluation"))
     return cols1
 end
+_required_injection_columns(model) = _required_columns(model)
+_required_injection_columns(::CBCVanillaEMCounterpartRate) = (:mass_1, :mass_2, :luminosity_distance)
+_required_injection_columns(::CBCLowLatencySkyMapEMCounterpartRate) = (:luminosity_distance,)
+_required_injection_columns(model::SpinWeightedRate) = (_required_injection_columns(model.base)..., model.spin_columns...)
 
 _is_scale_free(model) = getproperty(model, :scale_free)
 _is_scale_free(model::SpinWeightedRate) = _is_scale_free(model.base)
+
+function _weighted_kde_logpdf(samples::AbstractVector{<:Real}, logweights::AbstractVector{<:Real}, points::AbstractVector{<:Real})
+    length(samples) == length(logweights) || throw(ArgumentError("KDE samples and logweights must have the same length"))
+    keep = isfinite.(samples) .& isfinite.(logweights)
+    any(keep) || return fill(-Inf, length(points))
+    x = Float64.(samples[keep])
+    lw = Float64.(logweights[keep])
+    lnorm = logsumexp(lw)
+    isfinite(lnorm) || return fill(-Inf, length(points))
+    w = exp.(lw .- lnorm)
+    μ = sum(w .* x)
+    denom = 1 - sum(abs2, w)
+    variance = denom > eps(Float64) ? sum(w .* (x .- μ) .^ 2) / denom : sum(w .* (x .- μ) .^ 2)
+    neff = inv(sum(abs2, w))
+    bandwidth = sqrt(max(variance, 0.0)) * neff^(-1 / 5)
+    if !(bandwidth > 0 && isfinite(bandwidth))
+        bandwidth = max(1e-6, 1e-3 * (abs(μ) + 1))
+    end
+    lognorm = -log(bandwidth) - 0.5log(2pi)
+    return [logsumexp(log.(w) .+ lognorm .- 0.5 .* ((p .- x) ./ bandwidth) .^ 2) for p in points]
+end
+
+function _em_vanilla_event_logweights(base::CBCVanillaEMCounterpartRate, ps::PosteriorSamples, extra_logweights=nothing)
+    m1 = column(ps, :mass_1)
+    m2 = column(ps, :mass_2)
+    dl = column(ps, :luminosity_distance)
+    z_em = column(ps, :z_EM)
+    base_logw = Vector{Float64}(undef, length(ps.prior))
+    z_gw = Vector{Float64}(undef, length(ps.prior))
+    @inbounds for i in eachindex(base_logw)
+        base_logw[i] = Rates._em_vanilla_base_logweight(base, m1[i], m2[i], dl[i], ps.prior[i])
+        extra_logweights === nothing || (base_logw[i] += extra_logweights[i])
+        z_gw[i] = redshift_at_luminosity_distance(base.cosmology, dl[i])
+    end
+    event_log_evidence = logsumexp(base_logw) - log(length(base_logw))
+    return event_log_evidence .+ _weighted_kde_logpdf(z_gw, base_logw, z_em) .+ Rates._rate_scale(base)
+end
 
 function _event_logweights(model, ps::PosteriorSamples)
     cols = map(name -> column(ps, name), _required_columns(model))
@@ -88,6 +134,36 @@ function _event_logweights(model, ps::PosteriorSamples)
         out[i] = log_event_rate(model, (col[i] for col in cols)..., ps.prior[i])
     end
     return out
+end
+_event_logweights(model::CBCVanillaEMCounterpartRate, ps::PosteriorSamples) =
+    _em_vanilla_event_logweights(model, ps)
+
+function _event_logweights(model::SpinWeightedRate{<:CBCVanillaEMCounterpartRate}, ps::PosteriorSamples)
+    spin_cols = map(name -> column(ps, name), model.spin_columns)
+    extra = Vector{Float64}(undef, length(ps.prior))
+    @inbounds for i in eachindex(extra)
+        extra[i] = logpdf(model.spin_prior, (col[i] for col in spin_cols)...)
+    end
+    return _em_vanilla_event_logweights(model.base, ps, extra)
+end
+
+function _event_logweights(model::CBCLowLatencySkyMapEMCounterpartRate, ps::PosteriorSamples)
+    z = column(ps, :z_EM)
+    ra = column(ps, :right_ascension)
+    dec = column(ps, :declination)
+    dl = luminosity_distance(model.cosmology, z)
+    _, sky_likelihood = evaluate_3d_posterior_likelihood(Rates._skymap_for_event(model, ps.event_name), dl, ra, dec)
+    logw = Vector{Float64}(undef, length(ps.prior))
+    @inbounds for i in eachindex(logw)
+        if ps.prior[i] > 0 && sky_likelihood[i] > 0
+            logw[i] = Rates.log_rate(model.redshift_rate, z[i]) + log(dvc_dz(model.cosmology, z[i])) -
+                log(ps.prior[i]) - log1p(z[i]) + log(sky_likelihood[i])
+        else
+            logw[i] = -Inf
+        end
+    end
+    event_log_evidence = logsumexp(logw) - log(length(logw)) + Rates._rate_scale(model)
+    return fill(event_log_evidence, length(logw))
 end
 
 """
@@ -98,7 +174,7 @@ Return per-sample detector-frame log weights for one event posterior.
 event_logweights(model, ps::PosteriorSamples) = _event_logweights(model, ps)
 
 function _injection_logweights(model, inj::InjectionSet)
-    cols = map(name -> column(inj, name), _required_columns(model))
+    cols = map(name -> column(inj, name), _required_injection_columns(model))
     out = Vector{Float64}(undef, length(inj.prior))
     @inbounds for i in eachindex(out)
         out[i] = log_injection_rate(model, (col[i] for col in cols)..., inj.prior[i])

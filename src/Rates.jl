@@ -23,6 +23,8 @@ export AbstractRedshiftRate,
     CBCRedshiftPrimaryQRate,
     CBCCatalogVanillaRate,
     CBCCatalogSkyMapRate,
+    CBCVanillaEMCounterpartRate,
+    CBCLowLatencySkyMapEMCounterpartRate,
     MixtureRate,
     SpinWeightedRate,
     SimplePowerLawPopulation,
@@ -277,6 +279,58 @@ function CBCCatalogSkyMapRate(catalog, cosmology::AbstractCosmology, redshift_ra
 end
 
 """
+    CBCVanillaEMCounterpartRate(cosmology, mass_distribution, redshift_rate; R0=1, scale_free=false)
+
+Bright-siren CBC rate for posterior samples carrying an EM redshift column
+`:z_EM`. Event likelihood weights follow Python `CBC_vanilla_EM_counterpart`:
+the GW posterior samples are first weighted by the vanilla CBC rate, then a
+weighted redshift KDE is evaluated at the EM redshift samples. Injection
+weights use the vanilla CBC selection correction without EM-observatory bias.
+"""
+struct CBCVanillaEMCounterpartRate{C<:AbstractCosmology,M,R<:AbstractRedshiftRate} <: AbstractCBCRateModel
+    cosmology::C
+    mass_distribution::M
+    redshift_rate::R
+    R0::Float64
+    scale_free::Bool
+end
+CBCVanillaEMCounterpartRate(cosmology::AbstractCosmology, mass_distribution, redshift_rate::AbstractRedshiftRate;
+    R0::Real=1.0, scale_free::Bool=false) =
+    CBCVanillaEMCounterpartRate(cosmology, mass_distribution, redshift_rate, float(R0), Bool(scale_free))
+
+"""
+    CBCLowLatencySkyMapEMCounterpartRate(cosmology, redshift_rate, skymaps; R0=1, scale_free=false, event_names=nothing)
+
+Low-latency bright-siren rate for EM counterpart candidates with columns
+`:z_EM`, `:right_ascension`, and `:declination`. The event calculation combines
+the full-sky redshift rate with the matching `LigoSkyMap` 3D localization
+likelihood. When `event_names` is omitted, skymaps are matched to
+`:event1`, `:event2`, ...; a single skymap also works for a single event.
+"""
+struct CBCLowLatencySkyMapEMCounterpartRate{C<:AbstractCosmology,R<:AbstractRedshiftRate,S} <: AbstractCBCRateModel
+    cosmology::C
+    redshift_rate::R
+    skymaps::Vector{S}
+    event_names::Vector{Symbol}
+    R0::Float64
+    scale_free::Bool
+end
+function CBCLowLatencySkyMapEMCounterpartRate(cosmology::AbstractCosmology, redshift_rate::AbstractRedshiftRate,
+    skymaps; R0::Real=1.0, scale_free::Bool=false, event_names=nothing)
+    maps = collect(skymaps)
+    !isempty(maps) || throw(ArgumentError("at least one skymap is required"))
+    names = event_names === nothing ? [Symbol("event$i") for i in 1:length(maps)] : Symbol.(collect(event_names))
+    length(names) == length(maps) || throw(ArgumentError("event_names must have the same length as skymaps"))
+    return CBCLowLatencySkyMapEMCounterpartRate(cosmology, redshift_rate, maps, names, float(R0), Bool(scale_free))
+end
+function CBCLowLatencySkyMapEMCounterpartRate(cosmology::AbstractCosmology, redshift_rate::AbstractRedshiftRate,
+    skymaps::AbstractDict; R0::Real=1.0, scale_free::Bool=false)
+    names = Symbol.(collect(keys(skymaps)))
+    maps = collect(values(skymaps))
+    return CBCLowLatencySkyMapEMCounterpartRate(cosmology, redshift_rate, maps; R0, scale_free, event_names=names)
+end
+
+"""
     SpinWeightedRate(base_model, spin_prior, spin_columns)
 
 Compose a CBC rate model with an independent spin prior. `spin_columns` must be
@@ -377,13 +431,19 @@ function log_event_rate(model::SimplePowerLawPopulation, mass_1, mass_2, luminos
 end
 
 function log_event_rate(model::CBCVanillaRate, mass_1, mass_2, luminosity_distance, prior)
+    return _cbc_vanilla_logweight_no_scale(model.cosmology, model.mass_distribution, model.redshift_rate,
+        mass_1, mass_2, luminosity_distance, prior) + _rate_scale(model)
+end
+
+function _cbc_vanilla_logweight_no_scale(cosmology::AbstractCosmology, mass_distribution, redshift_rate::AbstractRedshiftRate,
+    mass_1, mass_2, luminosity_distance, prior)
     prior > 0 || return -Inf
-    m1s, m2s, z = detector_to_source(mass_1, mass_2, luminosity_distance, model.cosmology)
-    logjac = log(detector_to_source_jacobian(z, model.cosmology))
-    mass_logpdf = applicable(logpdf, model.mass_distribution, m1s, m2s, z) ?
-        logpdf(model.mass_distribution, m1s, m2s, z) : logpdf(model.mass_distribution, m1s, m2s)
-    return mass_logpdf + log_rate(model.redshift_rate, z) +
-        log(dvc_dz(model.cosmology, z)) - log(prior) - logjac - log1p(z) + _rate_scale(model)
+    m1s, m2s, z = detector_to_source(mass_1, mass_2, luminosity_distance, cosmology)
+    logjac = log(detector_to_source_jacobian(z, cosmology))
+    mass_logpdf = applicable(logpdf, mass_distribution, m1s, m2s, z) ?
+        logpdf(mass_distribution, m1s, m2s, z) : logpdf(mass_distribution, m1s, m2s)
+    return mass_logpdf + log_rate(redshift_rate, z) +
+        log(dvc_dz(cosmology, z)) - log(prior) - logjac - log1p(z)
 end
 
 function log_event_rate(model::CBCMass1Rate, mass_1, q, luminosity_distance, prior)
@@ -480,6 +540,29 @@ function log_injection_rate(model::CBCCatalogSkyMapRate, luminosity_distance, sk
     isfinite(logdensity) || return -Inf
     return log_rate(model.redshift_rate, z) + logdensity -
         log1p(z) - log(abs(ddl_dz(model.cosmology, z))) - log(prior) + _rate_scale(model)
+end
+
+function _em_vanilla_base_logweight(model::CBCVanillaEMCounterpartRate, mass_1, mass_2, luminosity_distance, prior)
+    return _cbc_vanilla_logweight_no_scale(model.cosmology, model.mass_distribution, model.redshift_rate,
+        mass_1, mass_2, luminosity_distance, prior)
+end
+
+function log_injection_rate(model::CBCVanillaEMCounterpartRate, mass_1, mass_2, luminosity_distance, prior)
+    return _em_vanilla_base_logweight(model, mass_1, mass_2, luminosity_distance, prior) + _rate_scale(model)
+end
+
+function log_injection_rate(model::CBCLowLatencySkyMapEMCounterpartRate, luminosity_distance, prior)
+    prior > 0 || return -Inf
+    z = redshift_at_luminosity_distance(model.cosmology, luminosity_distance)
+    return log_rate(model.redshift_rate, z) + log(dvc_dz(model.cosmology, z)) -
+        log(prior) - log(abs(ddl_dz(model.cosmology, z))) - log1p(z) + _rate_scale(model)
+end
+
+function _skymap_for_event(model::CBCLowLatencySkyMapEMCounterpartRate, event_name::Symbol)
+    idx = findfirst(==(event_name), model.event_names)
+    idx !== nothing && return model.skymaps[idx]
+    length(model.skymaps) == 1 && return only(model.skymaps)
+    throw(ArgumentError("no skymap registered for event $event_name"))
 end
 
 function log_event_rate(model::SpinWeightedRate, args...)

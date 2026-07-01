@@ -118,6 +118,14 @@ consume runtime catalog interpolants and a pixelized `:sky_indices` column; PE
 weights use sky-dependent catalog values, while injection weights use the
 Python-compatible averaged or empty-catalog completeness paths.
 
+Bright-siren counterpart rates are represented by
+`CBCVanillaEMCounterpartRate` and `CBCLowLatencySkyMapEMCounterpartRate`.
+The vanilla EM model expects posterior samples with `:mass_1`, `:mass_2`,
+`:luminosity_distance`, and `:z_EM`; event weights follow Python's weighted
+redshift-KDE construction, while injections use GW-only selection correction.
+The low-latency skymap EM model expects `:z_EM`, `:right_ascension`, and
+`:declination` posterior columns plus one `LigoSkyMap` per event.
+
 Spin variants are represented by `SpinWeightedRate(base_model, spin_prior)`,
 which composes `DefaultSpinPrior` or `GaussianSpinPrior` with the mass/redshift
 rate model instead of duplicating every Python spin wrapper class.

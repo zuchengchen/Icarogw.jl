@@ -44,26 +44,28 @@ complete until the final review checklist proves full scientific coverage.
 
 ## Current Largest Gaps
 
-- `catalog.py`: EM counterpart rates and GW/EM workflow integration remain the
-  largest catalog-side gaps. Pixelated catalog preparation now covers
+- `catalog.py` and `rates.py`: higher-level GW/EM workflow integration remains
+  the largest catalog-side gap. Pixelated catalog preparation now covers
   Python-style `pixel_*.hdf5` shards, NaN/magnitude/redshift-grid preprocessing,
   per-pixel effective-galaxy interpolants, and aggregation into
   `IcarogwCatalog` HDF5 files. The `IcarogwCatalog`, `GwcosmoCatalog`, and
   single-file `GalaxyCatalog` runtime HDF5 readers cover NUNIQ/HEALPix or
   stored-pixel lookup, magnitude thresholds, sky-dependent and averaged
-  effective galaxy interpolants, counts maps, and empty-catalog mode.
+  effective galaxy interpolants, counts maps, and empty-catalog mode. Bright
+  siren counterpart rates cover vanilla EM redshift columns and low-latency
+  skymap counterpart candidates with per-event `LigoSkyMap`s.
 - `stochastic.py` and `omega_gw.py`: duplicated `dEdf`, omega-weight, and
   spectral-siren logic is unified in Julia through deterministic
   energy-spectrum, vanilla spectral-siren, Gaussian stochastic-only, simple
   stochastic CSV/HDF5 readers, and vanilla CBC+stochastic likelihood helpers.
   Richer covariance/data-product APIs and catalog/EM mixed stochastic
   likelihoods remain open.
-- `rates.py` and `likelihood.py`: EM counterpart rates, full stochastic
-  data-product support, and catalog/EM stochastic joint likelihoods.
-  Catalog-aware CBC rates now consume runtime catalog interpolants and
-  pixelized `:sky_indices`. Standard pSEOB weighting composes through
-  `SpinWeightedRate`, while Python's pSEOB dummy injection asymmetry remains a
-  specialized gap.
+- `rates.py` and `likelihood.py`: full stochastic data-product support and
+  catalog/EM stochastic joint likelihoods remain open. Catalog-aware CBC rates
+  now consume runtime catalog interpolants and pixelized `:sky_indices`, and
+  EM counterpart rates consume `:z_EM` plus optional skymap sky coordinates.
+  Standard pSEOB weighting composes through `SpinWeightedRate`, while Python's
+  pSEOB dummy injection asymmetry remains a specialized gap.
 - `posterior_samples.py` and `injections.py`: higher-level catalog-aware
   workflows. Dependency-light posterior parallel workspaces, counterpart
   redshift-column attachment, HEALPix/catalog pixelization, non-catalog cuts,

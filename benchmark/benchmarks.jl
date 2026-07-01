@@ -141,3 +141,22 @@ dl = fill(100.0, length(ra))
 println("skymap core")
 display(@benchmark radec2skymap($ra, $dec, $skymap_nside; nest=true))
 display(@benchmark evaluate_3d_posterior_likelihood($toy_skymap, $dl, $ra, $dec))
+
+em_z = collect(range(0.08, 0.18; length=16))
+em_dl = luminosity_distance(catalog_cosmology, em_z)
+em_mass = ConditionalMassDistribution(PowerLaw(5.0, 80.0, -2.0), PowerLaw(5.0, 80.0, 1.0))
+em_rate = CBCVanillaEMCounterpartRate(catalog_cosmology, em_mass, PowerLawRate(0.0); R0=2.0)
+em_ps = PosteriorSamples((mass_1=fill(36.0, length(em_z)), mass_2=fill(24.0, length(em_z)),
+    luminosity_distance=em_dl, z_EM=em_z .+ 0.002, prior=ones(length(em_z))))
+em_inj = InjectionSet((mass_1=fill(36.0, length(em_z)), mass_2=fill(24.0, length(em_z)),
+    luminosity_distance=em_dl, prior=ones(length(em_z))); ntotal=64, Tobs=1.0)
+sky_em_rate = CBCLowLatencySkyMapEMCounterpartRate(catalog_cosmology, PowerLawRate(0.0), [toy_skymap]; R0=2.0)
+sky_em_ps = PosteriorSamples((z_EM=em_z, right_ascension=fill(0.2, length(em_z)),
+    declination=fill(0.1, length(em_z)), prior=ones(length(em_z))); event_name=:event1)
+sky_em_inj = InjectionSet((luminosity_distance=em_dl, prior=ones(length(em_z))); ntotal=64, Tobs=1.0)
+
+println("EM counterpart rates")
+display(@benchmark event_logweights($em_rate, $em_ps))
+display(@benchmark injection_logweights($em_rate, $em_inj))
+display(@benchmark event_logweights($sky_em_rate, $sky_em_ps))
+display(@benchmark injection_logweights($sky_em_rate, $sky_em_inj))
