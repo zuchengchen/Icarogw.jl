@@ -46,6 +46,7 @@ export AbstractPrior,
     GaussianStationary,
     GaussianLinear,
     MixtureMassPrior,
+    RedshiftMixtureMassPrior,
     DefaultSpinPrior,
     GaussianComponentSpinPrior,
     EvolvingGaussianSpinPrior,
@@ -76,6 +77,8 @@ logpdf(p::AbstractPrior, x::AbstractArray) = map(v -> logpdf(p, v), x)
 pdf(p::AbstractPrior, x) = exp.(logpdf(p, x))
 cdf(p::AbstractPrior, x::AbstractArray) = map(v -> cdf(p, v), x)
 logpdf(p::AbstractPrior, x::AbstractArray, z::AbstractArray) = map((a, b) -> logpdf(p, a, b), x, z)
+logpdf(p::AbstractPrior, x::AbstractArray, y::AbstractArray, z::AbstractArray) =
+    map((a, b, c) -> logpdf(p, a, b, c), x, y, z)
 pdf(p::AbstractPrior, x, z) = exp.(logpdf(p, x, z))
 
 _powerlaw_norm(min, max, alpha) =
@@ -1044,6 +1047,46 @@ end
 function logpdf(p::MixtureMassPrior, m::Real, z::Real)
     acc = -Inf
     for (c, w) in zip(p.components, p.weights)
+        acc = logaddexp(acc, log(w) + _component_logpdf(c, m, z))
+    end
+    return acc
+end
+
+"""
+    RedshiftMixtureMassPrior(components, weight_function)
+
+Redshift-dependent mixture of stationary or redshift-dependent mass priors.
+`weight_function(z)` must return one non-negative weight per component, with
+weights summing to one. This represents Python's redshift-linear mixture
+wrapper families while keeping the Julia API composable.
+"""
+struct RedshiftMixtureMassPrior{C<:Tuple,F} <: AbstractPrior
+    components::C
+    weight_function::F
+    min::Float64
+    max::Float64
+end
+function RedshiftMixtureMassPrior(components::Tuple, weight_function)
+    isempty(components) && throw(ArgumentError("components must not be empty"))
+    mins = [hasfield(typeof(c), :min) ? getfield(c, :min) : -Inf for c in components]
+    maxs = [hasfield(typeof(c), :max) ? getfield(c, :max) : Inf for c in components]
+    return RedshiftMixtureMassPrior(components, weight_function, minimum(mins), maximum(maxs))
+end
+RedshiftMixtureMassPrior(components::AbstractVector, weight_function) =
+    RedshiftMixtureMassPrior(Tuple(components), weight_function)
+function _validated_redshift_weights(p::RedshiftMixtureMassPrior, z)
+    weights = collect(Float64, p.weight_function(z))
+    length(weights) == length(p.components) || throw(ArgumentError("weight_function returned the wrong number of weights"))
+    all(isfinite, weights) && all(>=(0), weights) || return nothing
+    abs(sum(weights) - 1) <= 1e-10 || return nothing
+    return weights
+end
+function logpdf(p::RedshiftMixtureMassPrior, m::Real, z::Real)
+    weights = _validated_redshift_weights(p, z)
+    weights === nothing && return -Inf
+    acc = -Inf
+    for (c, w) in zip(p.components, weights)
+        w > 0 || continue
         acc = logaddexp(acc, log(w) + _component_logpdf(c, m, z))
     end
     return acc

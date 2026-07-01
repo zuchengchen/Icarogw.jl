@@ -141,6 +141,19 @@ end
     abs_lum = AbsLuminosityPowerLawInMagnitude(-23.0, -16.0, -1.1)
     @test logpdf(abs_lum, priors_rates_ref.M_abs) ≈ priors_rates_ref.abs_l_powerlaw_logpdf rtol=2e-14
     @test cdf(abs_lum, priors_rates_ref.M_abs) ≈ priors_rates_ref.abs_l_powerlaw_cdf rtol=2e-14
+    pl_pl = MixtureMassPrior((PowerLawStationary(1.5, 5.0, 50.0), PowerLawStationary(2.5, 8.0, 80.0)), [0.65, 0.35])
+    @test logpdf(pl_pl, priors_rates_ref.mix_mass) ≈ priors_rates_ref.pl_pl_logpdf rtol=2e-14
+    pl_pl_g = MixtureMassPrior((PowerLawStationary(1.5, 5.0, 50.0), PowerLawStationary(2.5, 8.0, 80.0),
+        GaussianStationary(30.0, 4.0, 5.0)), [0.45, 0.35, 0.20])
+    @test logpdf(pl_pl_g, priors_rates_ref.mix_mass) ≈ priors_rates_ref.pl_pl_g_logpdf rtol=2e-14
+    pl_g_z = RedshiftMixtureMassPrior((PowerLawLinear(1.5, 0.2, 5.0, 0.5, 60.0, 1.0),
+        GaussianLinear(25.0, 2.0, 4.0, 0.5, 5.0)),
+        z -> (w = mixed_linear_function(z, 0.75, 0.35); [w, 1 - w]))
+    @test logpdf(pl_g_z, priors_rates_ref.mix_mass, priors_rates_ref.mix_redshift) ≈ priors_rates_ref.pl_g_z_logpdf rtol=2e-14
+    g_g_z = RedshiftMixtureMassPrior((GaussianLinear(20.0, 1.0, 3.0, 0.4, 5.0),
+        GaussianLinear(40.0, -2.0, 5.0, 0.2, 5.0)),
+        z -> (w = mixed_linear_function(z, 0.6, 0.3); [w, 1 - w]))
+    @test logpdf(g_g_z, priors_rates_ref.mix_mass, priors_rates_ref.mix_redshift) ≈ priors_rates_ref.g_g_z_logpdf rtol=2e-14
     pair_base = PowerLaw(5.0, 60.0, -2.0)
     paired_dip = paired_massratio_dip(pair_base; beta=1.2, bottomsmooth=2.0, topsmooth=5.0,
         leftdip=10.0, rightdip=20.0, leftdipsmooth=2.0, rightdipsmooth=3.0, deep=0.4)

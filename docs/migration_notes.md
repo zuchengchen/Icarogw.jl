@@ -72,9 +72,9 @@ caches.
 Python wrapper classes such as `PowerLaw_PowerLaw`,
 `PowerLaw_PowerLaw_Gaussian`, and redshift-linear mass wrappers are represented
 by composable Julia pieces: `PowerLawStationary`, `PowerLawLinear`,
-`GaussianStationary`, `GaussianLinear`, `MixtureMassPrior`, and
-`RedshiftConditionalMassDistribution`. This keeps the sampler-facing API
-compact while covering the same first-version model family.
+`GaussianStationary`, `GaussianLinear`, `MixtureMassPrior`,
+`RedshiftMixtureMassPrior`, and `RedshiftConditionalMassDistribution`. This
+keeps the sampler-facing API compact while covering the same model families.
 
 Additional CBC coordinate systems are expressed as separate rate model structs:
 `CBCMass1Rate`, `CBCMchirpQRate`, `CBCSingleMassRate`,
@@ -100,9 +100,8 @@ inside likelihood loops. Further performance work should focus on:
   constants are native Julia.
 - The simulation helpers are quick, seeded mock-data tools rather than full
   detector simulations.
-- Several advanced redshift-evolving mixture combinations are represented by
-  composable primitives but still need additional reference fixtures before
-  their numerical tolerances are locked down.
+- Python wrapper classes are represented by composable Julia structs rather
+  than one mutable class per model family.
 
 ## Planned And Excluded Features
 

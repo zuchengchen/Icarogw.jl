@@ -83,7 +83,8 @@ Status meanings:
 | `Bivariate2DGaussian` | `Bivariate2DGaussian` | implemented | Truncated marginal plus conditional Gaussian. |
 | `absL_PL_inM` | `AbsLuminosityPowerLawInMagnitude`, `absL_PL_inM` | implemented/renamed | Luminosity power law represented in absolute-magnitude space. |
 | `PowerLawStationary`, `PowerLawLinear`, `GaussianStationary`, `GaussianLinear` | same names | implemented | Redshift-stationary and redshift-linear mass components. |
-| `PowerLaw_PowerLaw`, `PowerLaw_PowerLaw_PowerLaw`, `PowerLaw_PowerLaw_Gaussian`, redshift-linear mixture wrappers | `MixtureMassPrior` with stationary/linear components | implemented/merged | Julia-native composable mixture abstraction. |
+| `PowerLaw_PowerLaw`, `PowerLaw_PowerLaw_PowerLaw`, `PowerLaw_PowerLaw_Gaussian` | `MixtureMassPrior` with stationary components | implemented/merged | Julia-native composable mixture abstraction with fixture coverage. |
+| redshift-linear mixture wrappers | `RedshiftMixtureMassPrior` with stationary/linear components | implemented/merged | Weight functions make Python `mix_z0/mix_z1` wrapper families explicit and fixture-backed. |
 | spin prior wrappers | `DefaultSpinPrior`, `GaussianComponentSpinPrior`, `EvolvingGaussianSpinPrior`, `BetaWindowGaussianSpinPrior`, `BetaWindowBetaSpinPrior`, `PSEOBGaussianPrior`, `ECOTotallyReflectiveSpinPrior`, `GaussianSpinPrior` | implemented/merged | Component-spin, mass-dependent, pSEOB, ECO, and effective-spin priors are native structs with fixture coverage. |
 | Python mutable wrapper classes | `ParameterSchema` + model structs | merged | Julia hot path uses vectors and immutable models. |
 

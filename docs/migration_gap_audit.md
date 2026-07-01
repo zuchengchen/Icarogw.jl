@@ -66,7 +66,8 @@ complete until the final review checklist proves full scientific coverage.
 - `priors.py` and `wrappers.py`: standalone advanced priors, extended spin
   families, and dependency-free dip/Farah/bin/multi-peak paired mass wrapper
   compositions are implemented with fixture coverage. Redshift-linear mixture
-  wrapper families remain.
+  wrapper families are represented by explicit `RedshiftMixtureMassPrior`
+  weight functions.
 - `simulation.py`: detector/source-frame SNR helpers, measurement-noise
   helpers, flat-SNR scaling, deterministic quick likelihood factors,
   frequency/SNR cuts, quick data preparation, and quick PE resampling are

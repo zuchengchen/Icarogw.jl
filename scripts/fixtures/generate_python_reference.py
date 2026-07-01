@@ -382,6 +382,8 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
     log_rate_2 = np.array([-9.5, -12.0, -12.0])
     lambda_pop = 0.35
     mixed_rate = np.logaddexp(np.log(lambda_pop) + log_rate_1, np.log1p(-lambda_pop) + log_rate_2)
+    mix_mass = np.array([8.0, 20.0, 35.0])
+    mix_redshift = np.array([0.0, 0.5, 1.0])
     m1_pair = np.array([12.0, 20.0, 35.0])
     m2_pair = np.array([8.0, 12.0, 6.0])
     chi1 = np.array([0.2, 0.45, 0.7])
@@ -428,6 +430,29 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
     spin_beta_beta_logpdf = spin_beta_beta.log_pdf(chi1, chi2, cos1, cos2, mass1_source, mass2_source)
     pseob_logpdf = pseob.log_pdf(domega220, dtau220)
     eco_logpdf = eco.log_pdf(chi1, chi2)
+
+    pl_pl = wrappers.PowerLaw_PowerLaw(flag_powerlaw_smoothing=0)
+    pl_pl.update(alpha_a=1.5, mmin_a=5.0, mmax_a=50.0,
+                 alpha_b=2.5, mmin_b=8.0, mmax_b=80.0, mix=0.65)
+    pl_pl_logpdf = pl_pl.log_pdf(mix_mass)
+
+    pl_pl_g = wrappers.PowerLaw_PowerLaw_Gaussian(flag_powerlaw_smoothing=0)
+    pl_pl_g.update(alpha_a=1.5, mmin_a=5.0, mmax_a=50.0,
+                   alpha_b=2.5, mmin_b=8.0, mmax_b=80.0,
+                   mu_g=30.0, sigma_g=4.0, mix_alpha=0.45, mix_beta=0.35)
+    pl_pl_g_logpdf = pl_pl_g.log_pdf(mix_mass)
+
+    pl_g_z = wrappers.PowerLawRedshiftLinear_GaussianRedshiftLinear(flag_powerlaw_smoothing=0)
+    pl_g_z.update(alpha_z0=1.5, alpha_z1=0.2, mmin_z0=5.0, mmin_z1=0.5, mmax_z0=60.0, mmax_z1=1.0,
+                  mu_z0=25.0, mu_z1=2.0, sigma_z0=4.0, sigma_z1=0.5,
+                  mix_z0=0.75, mix_z1=0.35)
+    pl_g_z_logpdf = pl_g_z.log_pdf(mix_mass, mix_redshift)
+
+    g_g_z = wrappers.GaussianRedshiftLinear_GaussianRedshiftLinear()
+    g_g_z.update(mu_a_z0=20.0, mu_a_z1=1.0, sigma_a_z0=3.0, sigma_a_z1=0.4,
+                 mu_b_z0=40.0, mu_b_z1=-2.0, sigma_b_z0=5.0, sigma_b_z1=0.2,
+                 mix_z0=0.6, mix_z1=0.3, mmin_g=5.0)
+    g_g_z_logpdf = g_g_z.log_pdf(mix_mass, mix_redshift)
 
     np.random.seed(123)
     wrapper_powerlaw = wrappers.massprior_PowerLaw()
@@ -504,6 +529,12 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
                 "log_rate_2": log_rate_2[i],
                 "lambda_pop": lambda_pop,
                 "mixed_log_rate": mixed_rate[i],
+                "mix_mass": mix_mass[i],
+                "mix_redshift": mix_redshift[i],
+                "pl_pl_logpdf": pl_pl_logpdf[i],
+                "pl_pl_g_logpdf": pl_pl_g_logpdf[i],
+                "pl_g_z_logpdf": pl_g_z_logpdf[i],
+                "g_g_z_logpdf": g_g_z_logpdf[i],
                 "m1_pair": m1_pair[i],
                 "m2_pair": m2_pair[i],
                 "paired_dip_logpdf": paired_dip_logpdf[i],
@@ -552,6 +583,12 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
             "log_rate_2",
             "lambda_pop",
             "mixed_log_rate",
+            "mix_mass",
+            "mix_redshift",
+            "pl_pl_logpdf",
+            "pl_pl_g_logpdf",
+            "pl_g_z_logpdf",
+            "g_g_z_logpdf",
             "m1_pair",
             "m2_pair",
             "paired_dip_logpdf",
