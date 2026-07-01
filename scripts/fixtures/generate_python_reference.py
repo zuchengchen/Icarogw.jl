@@ -452,6 +452,34 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
                         leftdipsmooth=2.0, rightdipsmooth=3.0, deep=0.4)
     paired_farah_logpdf = paired_farah.log_pdf(m1_pair, m2_pair)
 
+    np.random.seed(126)
+    paired_bplmulti = wrappers.m1m2_paired_massratio_bplmulti_dip()
+    paired_bplmulti.update(alpha_1=1.5, alpha_2=3.0, mmin=5.0, mmax=60.0, beta_bottom=0.5, beta_top=2.0,
+                           bottomsmooth=2.0, topsmooth=5.0, leftdip=12.0, rightdip=24.0,
+                           leftdipsmooth=2.0, rightdipsmooth=3.0, deep=0.4,
+                           mu_g_low=10.0, sigma_g_low=1.5, lambda_g_low=0.4,
+                           mu_g_high=35.0, sigma_g_high=3.0, lambda_g=0.15)
+    paired_bplmulti_logpdf = paired_bplmulti.log_pdf(m1_pair, m2_pair)
+
+    np.random.seed(127)
+    paired_triple = wrappers.m1m2_paired_bpl_triplepeak_dip()
+    paired_triple.update(alpha_1=1.5, alpha_2=3.0, mmin=5.0, mmax=60.0, beta_bottom=0.5, beta_top=2.0,
+                         bottomsmooth=2.0, topsmooth=5.0, leftdip=12.0, rightdip=24.0,
+                         leftdipsmooth=2.0, rightdipsmooth=3.0, deep=0.4,
+                         mu_g_1=9.0, sigma_g_1=1.0, lambda_g=0.2,
+                         mu_g_2=25.0, sigma_g_2=2.0, lambda_1=0.3,
+                         mu_g_3=40.0, sigma_g_3=3.0, lambda_2=1.0)
+    paired_triple_logpdf = paired_triple.log_pdf(m1_pair, m2_pair)
+
+    paired_bplmulti_conditioned = wrappers.m1m2_paired_massratio_bplmulti_dip_conditioned()
+    paired_bplmulti_conditioned.update(alpha_1=1.5, alpha_2=3.0, mmin=5.0, mmax=60.0,
+                                       beta_bottom=0.5, beta_top=2.0,
+                                       bottomsmooth=2.0, topsmooth=5.0, leftdip=12.0, rightdip=24.0,
+                                       leftdipsmooth=2.0, rightdipsmooth=3.0, deep=0.4,
+                                       mu_g_low=10.0, sigma_g_low=1.5, lambda_g_low=0.4,
+                                       mu_g_high=35.0, sigma_g_high=3.0, lambda_g=0.15)
+    paired_bplmulti_conditioned_logpdf = paired_bplmulti_conditioned.log_pdf(m1_pair, m2_pair)
+
     bin_model = wrappers.massprior_BinModel2d(2)
     bin_model.update(mmin=5.0, mmax=45.0, bin_0=1.0, bin_1=2.0, bin_2=3.0)
     bin_model_logpdf = bin_model.log_pdf(m1_pair, m2_pair)
@@ -481,6 +509,9 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
                 "paired_dip_logpdf": paired_dip_logpdf[i],
                 "paired_dip_general_logpdf": paired_dip_general_logpdf[i],
                 "paired_farah_logpdf": paired_farah_logpdf[i],
+                "paired_bplmulti_logpdf": paired_bplmulti_logpdf[i],
+                "paired_triple_logpdf": paired_triple_logpdf[i],
+                "paired_bplmulti_conditioned_logpdf": paired_bplmulti_conditioned_logpdf[i],
                 "bin_model_logpdf": bin_model_logpdf[i],
                 "chi1": chi1[i],
                 "chi2": chi2[i],
@@ -526,6 +557,9 @@ def generate_priors_rates_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
             "paired_dip_logpdf",
             "paired_dip_general_logpdf",
             "paired_farah_logpdf",
+            "paired_bplmulti_logpdf",
+            "paired_triple_logpdf",
+            "paired_bplmulti_conditioned_logpdf",
             "bin_model_logpdf",
             "chi1",
             "chi2",

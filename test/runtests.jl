@@ -155,6 +155,25 @@ end
         leftdipsmooth=2.0, rightdipsmooth=3.0, deep=0.4)
     @test logpdf(paired_farah, priors_rates_ref.m1_pair, priors_rates_ref.m2_pair) ≈
           priors_rates_ref.paired_farah_logpdf atol=0.12
+    paired_bplmulti = paired_massratio_bplmulti_dip(alpha_1=1.5, alpha_2=3.0, mmin=5.0, mmax=60.0,
+        beta_bottom=0.5, beta_top=2.0, bottomsmooth=2.0, topsmooth=5.0, leftdip=12.0, rightdip=24.0,
+        leftdipsmooth=2.0, rightdipsmooth=3.0, deep=0.4, mu_g_low=10.0, sigma_g_low=1.5,
+        lambda_g_low=0.4, mu_g_high=35.0, sigma_g_high=3.0, lambda_g=0.15)
+    @test logpdf(paired_bplmulti, priors_rates_ref.m1_pair, priors_rates_ref.m2_pair) ≈
+          priors_rates_ref.paired_bplmulti_logpdf atol=0.12
+    paired_triple = paired_bpl_triplepeak_dip(alpha_1=1.5, alpha_2=3.0, mmin=5.0, mmax=60.0,
+        beta_bottom=0.5, beta_top=2.0, bottomsmooth=2.0, topsmooth=5.0, leftdip=12.0, rightdip=24.0,
+        leftdipsmooth=2.0, rightdipsmooth=3.0, deep=0.4, mu_g_1=9.0, sigma_g_1=1.0,
+        lambda_g=0.2, mu_g_2=25.0, sigma_g_2=2.0, lambda_1=0.3,
+        mu_g_3=40.0, sigma_g_3=3.0, lambda_2=1.0)
+    @test logpdf(paired_triple, priors_rates_ref.m1_pair, priors_rates_ref.m2_pair) ≈
+          priors_rates_ref.paired_triple_logpdf atol=0.12
+    paired_bplmulti_conditioned = paired_massratio_bplmulti_dip_conditioned(alpha_1=1.5, alpha_2=3.0,
+        mmin=5.0, mmax=60.0, beta_bottom=0.5, beta_top=2.0, bottomsmooth=2.0, topsmooth=5.0,
+        leftdip=12.0, rightdip=24.0, leftdipsmooth=2.0, rightdipsmooth=3.0, deep=0.4,
+        mu_g_low=10.0, sigma_g_low=1.5, lambda_g_low=0.4, mu_g_high=35.0, sigma_g_high=3.0, lambda_g=0.15)
+    @test logpdf(paired_bplmulti_conditioned, priors_rates_ref.m1_pair, priors_rates_ref.m2_pair) ≈
+          priors_rates_ref.paired_bplmulti_conditioned_logpdf rtol=0.02
     bin_model = bin_model_2d(5.0, 45.0, [1.0, 2.0, 3.0])
     @test logpdf(bin_model, priors_rates_ref.m1_pair, priors_rates_ref.m2_pair) ≈ priors_rates_ref.bin_model_logpdf rtol=2e-14
     spin_gaussian = GaussianComponentSpinPrior(0.25, 0.35, 0.2, 0.25, 0.5, 0.4)

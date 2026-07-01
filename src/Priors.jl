@@ -37,6 +37,9 @@ export AbstractPrior,
     paired_massratio_dip,
     paired_massratio_dip_general,
     paired_massratio_bpl_dip_farah_2022,
+    paired_bpl_triplepeak_dip,
+    paired_massratio_bplmulti_dip,
+    paired_massratio_bplmulti_dip_conditioned,
     bin_model_2d,
     PowerLawStationary,
     PowerLawLinear,
@@ -302,6 +305,8 @@ struct BrokenPowerLawMultiPeak <: AbstractPrior
     ghigh::TruncatedGaussian
     lambda::Float64
     lambda_low::Float64
+    min::Float64
+    max::Float64
 end
 function BrokenPowerLawMultiPeak(minpl, maxpl, alpha1, alpha2, b, lambda_g, lambda_low, mean_low, sigma_low, min_low, max_low, mean_high, sigma_high, min_high, max_high)
     return BrokenPowerLawMultiPeak(
@@ -310,6 +315,8 @@ function BrokenPowerLawMultiPeak(minpl, maxpl, alpha1, alpha2, b, lambda_g, lamb
         TruncatedGaussian(mean_high, sigma_high, min_high, max_high),
         float(lambda_g),
         float(lambda_low),
+        minimum((float(minpl), float(min_low), float(min_high))),
+        maximum((float(maxpl), float(max_low), float(max_high))),
     )
 end
 function logpdf(p::BrokenPowerLawMultiPeak, x::Real)
@@ -334,6 +341,8 @@ struct BrokenPowerLawTripleMultiPeak <: AbstractPrior
     lambda::Float64
     lambda1::Float64
     lambda2::Float64
+    min::Float64
+    max::Float64
 end
 function BrokenPowerLawTripleMultiPeak(minpl, maxpl, alpha1, alpha2, b, lambda_g, lambda1, lambda2,
     mean1, sigma1, min1, max1, mean2, sigma2, min2, max2, mean3, sigma3, min3, max3)
@@ -341,7 +350,9 @@ function BrokenPowerLawTripleMultiPeak(minpl, maxpl, alpha1, alpha2, b, lambda_g
         TruncatedGaussian(mean1, sigma1, min1, max1),
         TruncatedGaussian(mean2, sigma2, min2, max2),
         TruncatedGaussian(mean3, sigma3, min3, max3),
-        float(lambda_g), float(lambda1), float(lambda2))
+        float(lambda_g), float(lambda1), float(lambda2),
+        minimum((float(minpl), float(min1), float(min2), float(min3))),
+        maximum((float(maxpl), float(max1), float(max2), float(max3))))
 end
 function logpdf(p::BrokenPowerLawTripleMultiPeak, x::Real)
     a = p.lambda == 1 ? -Inf : log1p(-p.lambda) + logpdf(p.bpl, x)
@@ -840,6 +851,70 @@ function paired_massratio_bpl_dip_farah_2022(; alpha_1, alpha_2, mmin, mmax, bet
     base = BrokenPowerLaw(mmin, mmax, -alpha_1, -alpha_2, b)
     smoothed = _dip_smoothed_base(base; bottomsmooth, topsmooth, leftdip, rightdip, leftdipsmooth, rightdipsmooth, deep)
     return GeneralPairedMassDistribution(smoothed, _piecewise_q_pairing(beta_bottom, beta_top, 5.0))
+end
+
+function _dip_break_fraction(mmin, mmax, leftdip, rightdip, leftdipsmooth, rightdipsmooth)
+    mbreak_ns = leftdip + leftdipsmooth
+    mbreak_bh = rightdip - rightdipsmooth
+    mbreak = 0.5 * (mbreak_ns + mbreak_bh)
+    b = (mbreak - mmin) / (mmax - mmin)
+    0 < b < 1 || throw(ArgumentError("dip-derived break must lie inside [mmin, mmax]"))
+    return b, mbreak
+end
+
+"""
+    paired_massratio_bplmulti_dip(; alpha_1, alpha_2, mmin, mmax, ...)
+
+Python `m1m2_paired_massratio_bplmulti_dip` equivalent: a broken-power-law
+two-peak mass prior with a dip smoother and a secondary-mass split in the
+mass-ratio pairing exponent.
+"""
+function paired_massratio_bplmulti_dip(; alpha_1, alpha_2, mmin, mmax, beta_bottom, beta_top,
+    bottomsmooth, topsmooth, leftdip, rightdip, leftdipsmooth, rightdipsmooth, deep,
+    mu_g_low, sigma_g_low, lambda_g_low, mu_g_high, sigma_g_high, lambda_g)
+    b, mbreak = _dip_break_fraction(mmin, mmax, leftdip, rightdip, leftdipsmooth, rightdipsmooth)
+    base = BrokenPowerLawMultiPeak(mmin, mmax, -alpha_1, -alpha_2, b, lambda_g, lambda_g_low,
+        mu_g_low, sigma_g_low, mmin, mu_g_low + 5sigma_g_low,
+        mu_g_high, sigma_g_high, mmin, mu_g_high + 5sigma_g_high)
+    smoothed = _dip_smoothed_base(base; bottomsmooth, topsmooth, leftdip, rightdip, leftdipsmooth, rightdipsmooth, deep)
+    return GeneralPairedMassDistribution(smoothed, _piecewise_q_pairing(beta_bottom, beta_top, mbreak))
+end
+
+"""
+    paired_bpl_triplepeak_dip(; alpha_1, alpha_2, mmin, mmax, ...)
+
+Python `m1m2_paired_bpl_triplepeak_dip` equivalent using the native
+`BrokenPowerLawTripleMultiPeak` mass prior.
+"""
+function paired_bpl_triplepeak_dip(; alpha_1, alpha_2, mmin, mmax, beta_bottom, beta_top,
+    bottomsmooth, topsmooth, leftdip, rightdip, leftdipsmooth, rightdipsmooth, deep,
+    mu_g_1, sigma_g_1, lambda_g, mu_g_2, sigma_g_2, lambda_1, mu_g_3, sigma_g_3, lambda_2)
+    b, mbreak = _dip_break_fraction(mmin, mmax, leftdip, rightdip, leftdipsmooth, rightdipsmooth)
+    base = BrokenPowerLawTripleMultiPeak(mmin, mmax, -alpha_1, -alpha_2, b, lambda_g, lambda_1, lambda_2,
+        mu_g_1, sigma_g_1, mmin, mu_g_1 + 5sigma_g_1,
+        mu_g_2, sigma_g_2, mmin, mu_g_2 + 5sigma_g_2,
+        mu_g_3, sigma_g_3, mmin, mu_g_3 + 5sigma_g_3)
+    smoothed = _dip_smoothed_base(base; bottomsmooth, topsmooth, leftdip, rightdip, leftdipsmooth, rightdipsmooth, deep)
+    return GeneralPairedMassDistribution(smoothed, _piecewise_q_pairing(beta_bottom, beta_top, mbreak))
+end
+
+"""
+    paired_massratio_bplmulti_dip_conditioned(; alpha_1, alpha_2, mmin, mmax, ...)
+
+Python `m1m2_paired_massratio_bplmulti_dip_conditioned` equivalent. The
+primary mass follows the smoothed/dipped multi-peak model while the secondary
+mass is conditionally distributed as a low-pass-smoothed broken power law.
+"""
+function paired_massratio_bplmulti_dip_conditioned(; alpha_1, alpha_2, mmin, mmax, beta_bottom, beta_top,
+    bottomsmooth, topsmooth, leftdip, rightdip, leftdipsmooth, rightdipsmooth, deep,
+    mu_g_low, sigma_g_low, lambda_g_low, mu_g_high, sigma_g_high, lambda_g)
+    b, _ = _dip_break_fraction(mmin, mmax, leftdip, rightdip, leftdipsmooth, rightdipsmooth)
+    primary_base = BrokenPowerLawMultiPeak(mmin, mmax, -alpha_1, -alpha_2, b, lambda_g, lambda_g_low,
+        mu_g_low, sigma_g_low, mmin, mu_g_low + 5sigma_g_low,
+        mu_g_high, sigma_g_high, mmin, mu_g_high + 5sigma_g_high)
+    primary = _dip_smoothed_base(primary_base; bottomsmooth, topsmooth, leftdip, rightdip, leftdipsmooth, rightdipsmooth, deep)
+    secondary = LowpassSmoothedProb(BrokenPowerLaw(mmin, mmax, beta_bottom, beta_top, b), bottomsmooth)
+    return ConditionalMassDistribution(primary, secondary)
 end
 
 """
