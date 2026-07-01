@@ -54,7 +54,9 @@ complete until the final review checklist proves full scientific coverage.
 - `rates.py` and `likelihood.py`: catalog-aware rates, EM counterpart rates,
   stochastic-only likelihoods, and CBC+stochastic joint likelihoods.
 - `posterior_samples.py` and `injections.py`: catalog/skymap pixelization,
-  counterpart attachment, cut/resampling helpers, and catalog-aware workflows.
+  counterpart attachment, and catalog-aware workflows. Non-catalog cut,
+  effective-sample-size, expected-detection, and reweighting helpers are
+  implemented as pure Julia functions.
 - `conversions.py`: `ligo_skymap`, HEALPix coordinate helpers, and joint
   effective-spin KDE helpers.
 - `priors.py` and `wrappers.py`: advanced evolving smoothers, dip/bin/Farah

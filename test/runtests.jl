@@ -204,6 +204,22 @@ end
     @test poisson_logl ≈ no_poisson_logl - diag_tiny.N_expected + length(tiny.posteriors) * log(tiny.injections.Tobs)
     @test shape_logl ≈ no_poisson_logl - length(tiny.posteriors) * log(diag_tiny.xi)
     @test no_event_loglikelihood(model, tiny.injections) ≈ -diag_tiny.N_expected
+    @test expected_number_detections(model, tiny.injections) ≈ diag_tiny.N_expected
+    @test injection_logweights(model, tiny.injections) isa Vector{Float64}
+    @test event_logweights(model, first(tiny.posteriors.events)) isa Vector{Float64}
+    @test effective_sample_size(model, tiny.injections) ≈ diag_tiny.injection_neff
+    @test effective_sample_size(model, first(tiny.posteriors.events)) ≈ first(diag_tiny.per_event_neff)
+    inj_subset = subset_injections(tiny.injections, [true, false, true, false])
+    @test length(inj_subset.prior) == 2
+    @test inj_subset.ntotal == tiny.injections.ntotal
+    ps_subset = subset_posterior_samples(first(tiny.posteriors.events), [1, 3])
+    @test length(ps_subset.prior) == 2
+    @test ps_subset.event_name == first(tiny.posteriors.events).event_name
+    rw_inj = reweight_injections(MersenneTwister(7), model, tiny.injections, 3)
+    @test length(rw_inj.prior) == 3
+    @test rw_inj.ntotal == tiny.injections.ntotal
+    rw_ps = reweight_posterior_samples(MersenneTwister(8), model, first(tiny.posteriors.events), 2)
+    @test length(rw_ps.prior) == 2
     @test likelihood_diagnostics(model, tiny; options=LikelihoodOptions(neff_event_min=100)).accepted == false
     @test loglikelihood(model, tiny; options=LikelihoodOptions(neff_injection_min=100)) == -Inf
     @test loglikelihood_batch(SimplePowerLawPopulation, data, batch; parallel=true) ≈ vals

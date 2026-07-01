@@ -1,12 +1,20 @@
 module Likelihood
 
 using Base.Threads
+using Random
+using StatsBase
 using ..DataContainers
 using ..Rates
 using ..Utils: logsumexp
 
 export LikelihoodOptions,
     LikelihoodDiagnostics,
+    event_logweights,
+    injection_logweights,
+    effective_sample_size,
+    expected_number_detections,
+    reweight_injections,
+    reweight_posterior_samples,
     likelihood_diagnostics,
     loglikelihood,
     loglikelihood_batch,
@@ -80,6 +88,13 @@ function _event_logweights(model, ps::PosteriorSamples)
     return out
 end
 
+"""
+    event_logweights(model, posterior_samples)
+
+Return per-sample detector-frame log weights for one event posterior.
+"""
+event_logweights(model, ps::PosteriorSamples) = _event_logweights(model, ps)
+
 function _injection_logweights(model, inj::InjectionSet)
     cols = map(name -> column(inj, name), _required_columns(model))
     out = Vector{Float64}(undef, length(inj.prior))
@@ -89,6 +104,13 @@ function _injection_logweights(model, inj::InjectionSet)
     return out
 end
 
+"""
+    injection_logweights(model, injections)
+
+Return per-detected-injection detector-frame log weights.
+"""
+injection_logweights(model, inj::InjectionSet) = _injection_logweights(model, inj)
+
 function _neff_from_logs(logw::AbstractVector{<:Real})
     isempty(logw) && return 0.0
     l1 = logsumexp(logw)
@@ -96,6 +118,68 @@ function _neff_from_logs(logw::AbstractVector{<:Real})
     isfinite(l1) && isfinite(l2) || return 0.0
     return exp(2l1 - l2)
 end
+
+"""
+    effective_sample_size(logweights)
+
+Effective sample size `(sum w)^2 / sum(w^2)` computed stably from log weights.
+"""
+effective_sample_size(logweights::AbstractVector{<:Real}) = _neff_from_logs(logweights)
+effective_sample_size(model, ps::PosteriorSamples) = effective_sample_size(event_logweights(model, ps))
+effective_sample_size(model, inj::InjectionSet) = effective_sample_size(injection_logweights(model, inj))
+
+"""
+    expected_number_detections(model, injections)
+
+Expected number of detections `Tobs * sum(weights) / ntotal`, matching the
+Python injection helper's pseudo-rate convention.
+"""
+function expected_number_detections(model, injections::InjectionSet)
+    logw = injection_logweights(model, injections)
+    return injections.Tobs * exp(logsumexp(logw) - log(injections.ntotal))
+end
+
+function _normalized_probabilities(logw::AbstractVector{<:Real})
+    isempty(logw) && throw(ArgumentError("cannot resample from empty log weights"))
+    lnorm = logsumexp(logw)
+    isfinite(lnorm) || throw(ArgumentError("log weights have zero or non-finite total probability"))
+    probs = exp.(logw .- lnorm)
+    total = sum(probs)
+    total > 0 && isfinite(total) || throw(ArgumentError("invalid resampling probabilities"))
+    return probs ./ total
+end
+
+"""
+    reweight_injections(rng, model, injections, nsamples; replace=true)
+
+Draw a weighted injection subset according to detector-frame rate weights.
+"""
+function reweight_injections(rng::AbstractRNG, model, injections::InjectionSet, nsamples::Integer; replace::Bool=true)
+    probs = _normalized_probabilities(injection_logweights(model, injections))
+    if !replace && nsamples > length(injections.prior)
+        throw(ArgumentError("cannot draw more samples than available when replace=false"))
+    end
+    idx = sample(rng, 1:length(injections.prior), Weights(probs), nsamples; replace)
+    return subset_injections(injections, idx)
+end
+reweight_injections(model, injections::InjectionSet, nsamples::Integer; rng=Random.default_rng(), kwargs...) =
+    reweight_injections(rng, model, injections, nsamples; kwargs...)
+
+"""
+    reweight_posterior_samples(rng, model, posterior_samples, nsamples; replace=true)
+
+Draw posterior samples according to detector-frame rate weights.
+"""
+function reweight_posterior_samples(rng::AbstractRNG, model, ps::PosteriorSamples, nsamples::Integer; replace::Bool=true)
+    probs = _normalized_probabilities(event_logweights(model, ps))
+    if !replace && nsamples > length(ps.prior)
+        throw(ArgumentError("cannot draw more samples than available when replace=false"))
+    end
+    idx = sample(rng, 1:length(ps.prior), Weights(probs), nsamples; replace)
+    return subset_posterior_samples(ps, idx)
+end
+reweight_posterior_samples(model, ps::PosteriorSamples, nsamples::Integer; rng=Random.default_rng(), kwargs...) =
+    reweight_posterior_samples(rng, model, ps, nsamples; kwargs...)
 
 function _diagnose(logw_events, logw_inj, data::PopulationData, log_xi, options::LikelihoodOptions)
     per_event_neff = [_neff_from_logs(w) for w in logw_events]

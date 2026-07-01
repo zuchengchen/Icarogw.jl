@@ -12,6 +12,8 @@ export PosteriorSamples,
     PopulationData,
     column,
     validate,
+    subset_posterior_samples,
+    subset_injections,
     read_posterior_csv,
     read_injections_csv,
     write_hdf5,
@@ -132,6 +134,38 @@ Return a zero-copy vector view of a named container column.
 """
 column(ps::PosteriorSamples, name::Symbol) = view(ps.values, :, column_index(ps.names, name))
 column(inj::InjectionSet, name::Symbol) = view(inj.values, :, column_index(inj.names, name))
+
+function _row_indices(n::Integer, selector)
+    if selector isa AbstractVector{Bool}
+        length(selector) == n || throw(ArgumentError("Boolean selector length $(length(selector)) does not match row count $n"))
+        return findall(selector)
+    end
+    idx = Int.(collect(selector))
+    all(i -> 1 <= i <= n, idx) || throw(ArgumentError("row indices must lie in 1:$n"))
+    return idx
+end
+
+"""
+    subset_posterior_samples(samples, selector)
+
+Return a row-subset of one posterior-sample container. `selector` may be a
+Boolean mask or integer indices.
+"""
+function subset_posterior_samples(ps::PosteriorSamples, selector)
+    idx = _row_indices(length(ps.prior), selector)
+    return PosteriorSamples(ps.event_name, copy(ps.names), Matrix(ps.values[idx, :]), ps.prior[idx]) |> validate
+end
+
+"""
+    subset_injections(injections, selector)
+
+Return a detected-injection subset while preserving `ntotal` and `Tobs`.
+`selector` may be a Boolean mask or integer indices.
+"""
+function subset_injections(inj::InjectionSet, selector)
+    idx = _row_indices(length(inj.prior), selector)
+    return InjectionSet(copy(inj.names), Matrix(inj.values[idx, :]), inj.prior[idx], inj.ntotal, inj.Tobs) |> validate
+end
 
 """
     validate(container)
