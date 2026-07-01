@@ -660,6 +660,25 @@ end
     scaled_data = StochasticData(freqs, (omega .+ residual) .* hscale^2, sigma2s .* hscale^4)
     @test stochastic_loglikelihood(model, weights, scaled_data) ≈ expected_stochastic
 
+    mktempdir() do dir
+        stochastic_csv = joinpath(dir, "stochastic.csv")
+        CSV.write(stochastic_csv, DataFrame(freqs=freqs, Cf=data.Cf, sigma2s=data.sigma2s))
+        data_from_csv = read_stochastic_csv(stochastic_csv; reference_H0=data.reference_H0)
+        @test data_from_csv.frequencies == data.frequencies
+        @test data_from_csv.Cf == data.Cf
+        @test data_from_csv.sigma2s == data.sigma2s
+        @test data_from_csv.reference_H0 == data.reference_H0
+
+        stochastic_h5 = joinpath(dir, "stochastic.h5")
+        write_stochastic_hdf5(stochastic_h5, data)
+        data_from_h5 = read_stochastic_hdf5(stochastic_h5)
+        @test data_from_h5.frequencies == data.frequencies
+        @test data_from_h5.Cf == data.Cf
+        @test data_from_h5.sigma2s == data.sigma2s
+        @test data_from_h5.reference_H0 == data.reference_H0
+        @test read_stochastic_hdf5(stochastic_h5; reference_H0=100.0).reference_H0 == 100.0
+    end
+
     tiny = _tiny_population_data(FlatLambdaCDM(H0=67.7, Om0=0.308, zmax=2))
     cbc_logl = loglikelihood(model, tiny)
     @test joint_loglikelihood(model, tiny, weights, data) ≈ cbc_logl + expected_stochastic
@@ -705,8 +724,9 @@ end
     end
 
     @test any((audit.python_module .== "catalog.py") .& (audit.status .== "missing") .& (audit.fixture_priority .== "high"))
-    @test any((audit.python_module .== "stochastic.py") .& (audit.status .== "partial") .& (audit.fixture_priority .== "existing"))
-    @test any((audit.python_module .== "omega_gw.py") .& (audit.status .== "partial") .& (audit.fixture_priority .== "existing"))
+    @test any((audit.python_module .== "stochastic.py") .& (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))
+    @test any((audit.python_module .== "omega_gw.py") .& (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))
+    @test any((audit.python_module .== "likelihood.py") .& (audit.status .== "partial") .& (audit.next_phase .== "stochastic"))
     @test any((audit.python_module .== "utils.py") .& (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))
     @test any((audit.python_module .== "cupy_pal.py") .& (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))
     @test any((audit.python_module .== "cupy_pal.py") .& (audit.status .== "excluded"))

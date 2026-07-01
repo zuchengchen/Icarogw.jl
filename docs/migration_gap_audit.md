@@ -50,10 +50,11 @@ complete until the final review checklist proves full scientific coverage.
   The dependency-light Schechter luminosity-function and absolute-magnitude
   rate formulas used by those workflows are implemented separately.
 - `stochastic.py` and `omega_gw.py`: duplicated `dEdf`, omega-weight, and
-  spectral-siren logic is now partially unified in Julia through deterministic
-  energy-spectrum, vanilla spectral-siren, Gaussian stochastic-only, and
-  vanilla CBC+stochastic likelihood helpers. Full covariance/data-product
-  readers and catalog/EM mixed stochastic likelihoods remain open.
+  spectral-siren logic is unified in Julia through deterministic
+  energy-spectrum, vanilla spectral-siren, Gaussian stochastic-only, simple
+  stochastic CSV/HDF5 readers, and vanilla CBC+stochastic likelihood helpers.
+  Richer covariance/data-product APIs and catalog/EM mixed stochastic
+  likelihoods remain open.
 - `rates.py` and `likelihood.py`: catalog-aware rates, EM counterpart rates,
   full stochastic data-product support, and catalog/EM stochastic joint
   likelihoods. Standard pSEOB weighting composes through `SpinWeightedRate`,

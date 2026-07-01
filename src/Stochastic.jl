@@ -1,5 +1,8 @@
 module Stochastic
 
+using CSV
+using DataFrames
+using HDF5
 using Random
 using ..Priors
 using ..Rates
@@ -17,6 +20,9 @@ export PNVelocityPowers,
     pn_velocity_powers,
     dedf,
     precompute_omega_weights,
+    read_stochastic_csv,
+    write_stochastic_hdf5,
+    read_stochastic_hdf5,
     spectral_siren_omega_gw,
     stochastic_loglikelihood,
     joint_loglikelihood,
@@ -85,6 +91,69 @@ function StochasticData(frequencies, Cf, sigma2s; reference_H0::Real=100.0)
         throw(ArgumentError("stochastic data must be finite"))
     all(>(0), sig) || throw(ArgumentError("sigma2s must be positive"))
     return StochasticData(freqs, cf, sig, float(reference_H0))
+end
+
+function _first_present(names, candidates)
+    for candidate in candidates
+        candidate in names && return candidate
+    end
+    return nothing
+end
+
+function _table_column(table::DataFrame, candidates, label)
+    idx = _first_present(Symbol.(names(table)), candidates)
+    idx === nothing && throw(ArgumentError("stochastic data is missing $label column; accepted names: $(join(String.(candidates), ", "))"))
+    return table[!, idx]
+end
+
+"""
+    read_stochastic_csv(path; reference_H0=100)
+
+Read stochastic-background data from CSV. Accepted columns are Python-style
+`freqs`, `Cf`, `sigma2s`, or Julia-style `frequency`, `cf`, `sigma2`.
+"""
+function read_stochastic_csv(path::AbstractString; reference_H0::Real=100.0)
+    table = CSV.File(path) |> DataFrame
+    freqs = _table_column(table, (:freqs, :freq, :frequency, :frequencies), "frequency")
+    cf = _table_column(table, (:Cf, :cf), "Cf")
+    sigma2s = _table_column(table, (:sigma2s, :sigma2, :variance), "sigma2s")
+    return StochasticData(freqs, cf, sigma2s; reference_H0)
+end
+
+"""
+    write_stochastic_hdf5(path, data)
+
+Write `StochasticData` to HDF5 datasets `freqs`, `Cf`, and `sigma2s`, with
+`reference_H0` stored as a file attribute.
+"""
+function write_stochastic_hdf5(path::AbstractString, data::StochasticData)
+    h5open(path, "w") do h
+        write(h, "freqs", data.frequencies)
+        write(h, "Cf", data.Cf)
+        write(h, "sigma2s", data.sigma2s)
+        attrs(h)["reference_H0"] = data.reference_H0
+    end
+    return path
+end
+
+"""
+    read_stochastic_hdf5(path; reference_H0=nothing)
+
+Read stochastic-background data from HDF5 datasets `freqs`, `Cf`, and
+`sigma2s`. When `reference_H0` is not provided, the file attribute is used if
+present, otherwise Python's `100` convention is assumed.
+"""
+function read_stochastic_hdf5(path::AbstractString; reference_H0=nothing)
+    h5open(path, "r") do h
+        freqs = read(h, "freqs")
+        cf = read(h, "Cf")
+        sigma2s = read(h, "sigma2s")
+        hattrs = attrs(h)
+        ref = reference_H0 === nothing ?
+            (haskey(hattrs, "reference_H0") ? Float64(hattrs["reference_H0"]) : 100.0) :
+            Float64(reference_H0)
+        return StochasticData(freqs, cf, sigma2s; reference_H0=ref)
+    end
 end
 
 """

@@ -129,7 +129,7 @@ Status meanings:
 | `hierarchical_likelihood_noevents` | `no_event_loglikelihood` | implemented/renamed | Upper-limit likelihood. |
 | selection correction | `InjectionSet` + diagnostics | implemented | `xi`, `N_expected`, injection ESS. |
 | diagnostics | `LikelihoodDiagnostics` | implemented | Structured return type. |
-| stochastic likelihood classes | `StochasticData`, `stochastic_loglikelihood`, `joint_loglikelihood` | partial | Gaussian stochastic-only and vanilla CBC+stochastic helpers are implemented; catalog/EM mixed stochastic likelihoods and full covariance/data-product readers remain pending. |
+| stochastic likelihood classes | `StochasticData`, `read_stochastic_csv`, `read_stochastic_hdf5`, `stochastic_loglikelihood`, `joint_loglikelihood` | partial | Gaussian stochastic-only, simple stochastic CSV/HDF5 readers, and vanilla CBC+stochastic helpers are implemented; catalog/EM mixed stochastic likelihoods and richer covariance/data-product APIs remain pending. |
 
 ## simulation.py
 
@@ -153,8 +153,8 @@ Status meanings:
 | `galaxy_MF_dep` | `LegacyGalaxyLuminosityFunction`, `galaxy_MF_dep` | implemented/renamed | Legacy W1/K/bJ Schechter helper with Python fixture coverage; `GalaxyLuminosityFunction` remains preferred for new code. |
 | `EM_likelihood_prior_differential_volume` | `em_likelihood_prior_differential_volume`, `EM_likelihood_prior_differential_volume` | implemented/renamed | Uniform, gaussian, and gaussian-without-comoving-volume redshift helper with fixture coverage. |
 | galaxy catalog / EM counterpart runtime APIs | `Catalog.catalog_planned` | planned | Pixelated catalog, skymap, and counterpart workflows still require catalog/skymap dependency decisions. |
-| stochastic background APIs | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw`, `StochasticData`, `stochastic_loglikelihood` | partial | Energy spectrum, omega weights, vanilla spectral-siren helper, and Gaussian stochastic likelihood are implemented; full covariance/data-product readers remain pending. |
-| `Omega_GW` helpers | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw`, `joint_loglikelihood` | partial | Duplicate Python `stochastic.py`/`omega_gw.py` formulas are unified in Julia with a vanilla CBC+stochastic helper. |
+| stochastic background APIs | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw`, `StochasticData`, `read_stochastic_csv`, `read_stochastic_hdf5`, `stochastic_loglikelihood` | implemented/renamed | Energy spectrum, omega weights, vanilla spectral-siren helper, Gaussian stochastic likelihood, and simple freqs/Cf/sigma2s readers are implemented. |
+| `Omega_GW` helpers | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw`, `joint_loglikelihood` | implemented/merged | Duplicate Python `stochastic.py`/`omega_gw.py` formulas are unified in Julia with a vanilla CBC+stochastic helper. |
 | `utils.check_posterior_samples_and_prior` | `check_posterior_samples_and_prior` | implemented | Non-Condor validation helper. |
 | `cupy_pal.check_bounds_1D`, `check_bounds_2D` | `check_bounds_1d`, `check_bounds_2d` | implemented/renamed | CPU array semantics only. |
 | Condor helper functions | none | excluded | Explicitly excluded. |

@@ -106,6 +106,15 @@ creates the matrix workspace used by Python `posterior_samples_catalog`, while
 filtering and catalog pixelization still belong to the future skymap/catalog
 runtime because they require FITS/HEALPix/NUNIQ choices.
 
+## Stochastic Data
+
+Python stochastic likelihoods consume dictionaries with `freqs`, `Cf`, and
+`sigma2s`. Julia represents the same diagonal Gaussian data as `StochasticData`
+and provides `read_stochastic_csv`, `write_stochastic_hdf5`, and
+`read_stochastic_hdf5` for lightweight file workflows. Richer covariance or
+collaboration-specific stochastic products remain future API design rather
+than a Python formula gap.
+
 ## Performance Strategy
 
 The first hot path avoids `Dict`, `DataFrame`, and dynamic wrapper updates
