@@ -14,6 +14,7 @@ include("Catalog.jl")
 include("Stochastic.jl")
 include("OmegaGW.jl")
 
+using .Utils
 using .Cosmology
 using .Conversions
 using .Priors
@@ -26,6 +27,16 @@ using .DynestyInterface
 using .Stochastic
 
 export COST_C,
+    logaddexp,
+    logsumexp,
+    finite_or_neginf,
+    ensure_vector,
+    assert_same_length,
+    check_posterior_samples_and_prior,
+    check_bounds_1d,
+    check_bounds_2d,
+    check_bounds_1D,
+    check_bounds_2D,
     AbstractCosmology,
     FlatLambdaCDM,
     FlatwCDM,
@@ -131,8 +142,23 @@ export COST_C,
     loglikelihood_batch,
     no_event_loglikelihood,
     simulate_sources,
+    chirp_mass_detector,
+    f_gw,
+    z_to_dl,
+    dl_to_z,
+    dvc_dz_fullsky,
     snr_samples,
+    snr_samples_source,
+    snr_samples_detector,
+    snr_samples_flat,
+    chirp_mass_noise,
+    mass_ratio_noise,
+    theta_noise,
+    noise,
     apply_snr_cut,
+    snr_and_freq_cut,
+    snr_cut_flat,
+    likelihood_evaluation,
     generate_posterior_samples,
     generate_injections,
     simulate_population_data,

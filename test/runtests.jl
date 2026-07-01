@@ -4,6 +4,8 @@ using DataFrames
 using Random
 using Test
 
+_truthy(x) = x isa Bool ? x : lowercase(String(x)) == "true"
+
 function _tiny_population_data(c=FlatLambdaCDM(zmax=2))
     z1, z2 = 0.2, 0.35
     m1a, m2a, dla = source_to_detector(30.0, 20.0, z1, c)
@@ -96,6 +98,27 @@ end
     values = dedf(first(stochastic_ref.Mtot), freqs; eta=first(stochastic_ref.eta), chi=first(stochastic_ref.chi))
     @test values ≈ stochastic_ref.dEdf rtol=2e-14
     @test dedf(first(stochastic_ref.Mtot), first(freqs); eta=first(stochastic_ref.eta), chi=first(stochastic_ref.chi)) ≈ first(stochastic_ref.dEdf) rtol=2e-14
+
+    sim_ref = CSV.File(joinpath(refdir, "reference_simulation_utils.csv")) |> DataFrame
+    @test chirp_mass_detector(sim_ref.m1, sim_ref.m2, sim_ref.z) ≈ sim_ref.chirp_mass_det rtol=1e-14
+    @test f_gw(sim_ref.m1, sim_ref.m2, sim_ref.z) ≈ sim_ref.f_gw rtol=1e-14
+    @test snr_samples_flat(sim_ref.z; alpha=2.0) ≈ sim_ref.snr_flat_alpha2 rtol=1e-14
+    likelihood = likelihood_evaluation(
+        [10.0, 14.0, 18.0],
+        [0.60, 0.50, 0.80],
+        [24.0, 30.0, 42.0],
+        [0.5, 0.8, 1.1],
+        [11.0, 13.0, 19.0],
+        [0.62, 0.48, 0.78],
+        [24.1, 29.8, 42.5],
+        [0.55, 0.75, 1.05],
+    )
+    @test likelihood ≈ sim_ref.likelihood rtol=1e-12
+    @test check_bounds_1d([-1.0, 0.5, 2.0], 0.0, 1.0) == _truthy.(sim_ref.bounds_1d)
+    @test check_bounds_2d([1.0, 0.5, 2.0], [0.5, 0.7, 1.0], [0.1, NaN, 0.3]) == _truthy.(sim_ref.bounds_2d)
+    @test snr_and_freq_cut(sim_ref.m1, sim_ref.m2, sim_ref.z, [13.0, 9.0, 20.0]; snr_threshold=12.0, fgw_cut=15.0) ==
+          findall(_truthy.(sim_ref.passes_snr_freq))
+    @test snr_cut_flat([13.0, 9.0, 20.0]; snr_threshold=12.0) == findall(_truthy.(sim_ref.passes_snr_flat))
 end
 
 @testset "priors and schema" begin
@@ -227,6 +250,29 @@ end
     post = generate_posterior_samples(rng, (mass_1=40.0, mass_2=25.0, luminosity_distance=1500.0); nsamples=12, event_name=:mock)
     @test length(post.prior) == 12
     @test post.event_name == :mock
+
+    rng_noise = MersenneTwister(2027)
+    Md_obs, q_obs, theta_obs = noise(rng_noise, [25.0, 30.0], [0.7, 0.8], [0.4, 0.5], [12.0, 15.0])
+    @test length(Md_obs) == 2
+    @test length(q_obs) == 2
+    @test length(theta_obs) == 2
+    @test isfinite(chirp_mass_noise(MersenneTwister(1), 25.0, 12.0))
+    snr_det = snr_samples_detector(MersenneTwister(2), [33.0, 28.0], [22.0, 20.0], [900.0, 1100.0]; theta=[0.8, 1.0])
+    snr_src = snr_samples_source(MersenneTwister(2), [30.0, 24.0], [20.0, 18.0], [0.1, 0.1]; theta=[0.8, 1.0])
+    @test length(snr_det.rho_obs) == 2
+    @test length(snr_src.rho_obs) == 2
+    @test z_to_dl(0.2) > 0
+    @test dl_to_z(z_to_dl(0.2)) ≈ 0.2 rtol=1e-8
+    @test dvc_dz_fullsky(0.2) > 0
+end
+
+@testset "utility helpers" begin
+    posterior = (mass_1=[30.0, 31.0], mass_2=[20.0, 21.0])
+    @test check_posterior_samples_and_prior(posterior, [1.0, 2.0]) === nothing
+    @test_throws ArgumentError check_posterior_samples_and_prior((mass_1=[30.0], mass_2=[20.0, 21.0]), [1.0])
+    @test_throws ArgumentError check_posterior_samples_and_prior(posterior, [1.0, 0.0])
+    @test check_bounds_1D([0.0, 2.0], 0.5, 1.5) == [true, true]
+    @test check_bounds_2D([1.0, 0.5], [0.5, 0.7], [0.1, NaN]) == [false, true]
 end
 
 @testset "alternate rate coordinates" begin
@@ -357,6 +403,7 @@ end
     @test any((audit.python_module .== "catalog.py") .& (audit.status .== "missing") .& (audit.fixture_priority .== "high"))
     @test any((audit.python_module .== "stochastic.py") .& (audit.status .== "partial") .& (audit.fixture_priority .== "existing"))
     @test any((audit.python_module .== "omega_gw.py") .& (audit.status .== "partial") .& (audit.fixture_priority .== "existing"))
-    @test any((audit.python_module .== "utils.py") .& (audit.status .== "missing"))
+    @test any((audit.python_module .== "utils.py") .& (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))
+    @test any((audit.python_module .== "cupy_pal.py") .& (audit.status .== "implemented") .& (audit.fixture_priority .== "existing"))
     @test any((audit.python_module .== "cupy_pal.py") .& (audit.status .== "excluded"))
 end

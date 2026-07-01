@@ -29,6 +29,10 @@ the Python reference checkout.
   stochastic/OmegaGW implementation. This suite loads `omega_gw.py` directly
   instead of importing the Python package, so it does not require catalog
   dependencies such as `healpy`.
+- `simulation-utils-smoke`: deterministic formulas from `simulation.py`,
+  `utils.py`, and `cupy_pal.py`. It uses lightweight import stubs for optional
+  Python dependencies and does not exercise random draws or catalog/skymap
+  workflows.
 - `catalog-smoke`: reserved for the catalog migration phase and intentionally
   not implemented yet.
 - `all-small`: all currently implemented small suites.

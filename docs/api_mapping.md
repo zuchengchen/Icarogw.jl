@@ -121,10 +121,13 @@ Status meanings:
 | Python API | Julia API | Status | Notes |
 | --- | --- | --- | --- |
 | source mass/redshift generation | `simulate_sources` | implemented/renamed | Seeded RNG. |
-| SNR helpers | `snr_samples`, `apply_snr_cut` | implemented/renamed | Smoke-test approximation. |
+| `chirp_mass_det`, `f_GW`, `z_to_dl`, `dl_to_z`, `dVc_dz` | `chirp_mass_detector`, `f_gw`, `z_to_dl`, `dl_to_z`, `dvc_dz_fullsky` | implemented/renamed | Deterministic formulas covered by fixture. |
+| SNR helpers | `snr_samples`, `snr_samples_source`, `snr_samples_detector`, `snr_samples_flat`, `apply_snr_cut`, `snr_and_freq_cut`, `snr_cut_flat` | implemented/renamed | Smoke-test approximation; random draws are RNG-explicit. |
+| measurement noise and quick likelihood | `chirp_mass_noise`, `mass_ratio_noise`, `theta_noise`, `noise`, `likelihood_evaluation` | implemented/renamed | Formula fixture covers deterministic likelihood factors. |
 | quick PE generation | `generate_posterior_samples` | implemented/renamed | Toy posteriors. |
 | injection generation | `generate_injections` | implemented/renamed | Native injection set. |
 | end-to-end mock data | `simulate_population_data` | implemented | Used by tests/examples. |
+| `quick_data_preparation`, `PE_quick_generation_samples` | native workflow pieces | partial | Large rejection/resampling workflow intentionally decomposed; full parity still open. |
 
 ## catalog.py, stochastic.py, omega_gw.py, utils.py, cupy_pal.py
 
@@ -133,6 +136,8 @@ Status meanings:
 | galaxy catalog / EM counterpart APIs | `Catalog.catalog_planned` | planned | Clear planned error. |
 | stochastic background APIs | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw` | partial | Energy spectrum, omega weights, and vanilla spectral-siren helper implemented; stochastic likelihoods pending. |
 | `Omega_GW` helpers | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw` | partial | Duplicate Python `stochastic.py`/`omega_gw.py` formulas are unified in Julia. |
+| `utils.check_posterior_samples_and_prior` | `check_posterior_samples_and_prior` | implemented | Non-Condor validation helper. |
+| `cupy_pal.check_bounds_1D`, `check_bounds_2D` | `check_bounds_1d`, `check_bounds_2d` | implemented/renamed | CPU array semantics only. |
 | Condor helper functions | none | excluded | Explicitly excluded. |
 | pickle support | none | excluded | Explicitly excluded. |
 | `cupy_pal.py` GPU backend switching | none | excluded | Native Julia CPU first; no Python/CuPy bridge. |

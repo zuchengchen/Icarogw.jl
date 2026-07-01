@@ -14,6 +14,12 @@ interpolated tables or closed-form special-function expressions.
 It loads that source file directly so the deterministic spectrum fixture does
 not require optional catalog/skymap dependencies such as `healpy`.
 
+`reference_simulation_utils.csv` captures deterministic formulas from
+`simulation.py`, `utils.py`, and `cupy_pal.py`: detector-frame chirp mass,
+toy GW frequency, flat-SNR scaling, quick-PE likelihood factors, bounds masks,
+and SNR/frequency cuts. It intentionally excludes random draws and
+cosmology-table outputs.
+
 New reference fixtures for the full scientific migration should be generated
 with scripts under `scripts/fixtures/`, reviewed, and then renamed from the
 temporary `generated_reference_*` prefix before committing. The formal Julia

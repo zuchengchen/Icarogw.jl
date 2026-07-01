@@ -61,10 +61,13 @@ complete until the final review checklist proves full scientific coverage.
 - `priors.py` and `wrappers.py`: advanced evolving smoothers, dip/bin/Farah
   wrappers, extended spin families, bivariate Gaussian, and absolute-luminosity
   priors.
-- `simulation.py`: detector-frame SNR helpers, measurement-noise helpers,
-  likelihood evaluation helpers, and quick PE workflow parity.
-- `utils.py` and `cupy_pal.py`: non-Condor validation helpers and CPU bounds
-  helpers. Condor and GPU switching remain excluded.
+- `simulation.py`: detector/source-frame SNR helpers, measurement-noise
+  helpers, flat-SNR scaling, deterministic quick likelihood factors, and
+  frequency/SNR cuts are implemented with fixture coverage. The large
+  `quick_data_preparation` and `PE_quick_generation_samples` resampling
+  workflows still need a Julia-native tutorial-level design.
+- `utils.py` and `cupy_pal.py`: non-Condor validation helper and CPU bounds
+  helpers are implemented. Condor and GPU switching remain excluded.
 
 ## Reference Fixture Policy
 
