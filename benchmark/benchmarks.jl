@@ -19,3 +19,9 @@ display(@benchmark likelihood_diagnostics(SimplePowerLawPopulation, $data, $thet
 
 println("simulation mock generation")
 display(@benchmark simulate_population_data($rng, $model; nevents=1, nsamples=64, ndetected=64, ntotal=500, zmax=0.5))
+
+freqs = collect(range(20.0, 100.0; length=16))
+omega_weights = precompute_omega_weights(MersenneTwister(9), freqs; tmp_min=5.0, tmp_max=80.0, n=256)
+
+println("stochastic Omega_GW spectrum")
+display(@benchmark spectral_siren_omega_gw($model, $omega_weights))

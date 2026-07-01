@@ -48,8 +48,9 @@ complete until the final review checklist proves full scientific coverage.
   runtime catalog types, redshift grids, magnitude thresholds, effective galaxy
   number interpolants, GW skymap intersections, k-corrections, and EM helpers.
 - `stochastic.py` and `omega_gw.py`: duplicated `dEdf`, omega-weight, and
-  spectral-siren logic that should become one Julia-native stochastic/OmegaGW
-  module with deterministic workspaces.
+  spectral-siren logic is now partially unified in Julia through deterministic
+  energy-spectrum and vanilla spectral-siren helpers. Stochastic-only
+  likelihoods, data products, and joint likelihoods remain open.
 - `rates.py` and `likelihood.py`: catalog-aware rates, EM counterpart rates,
   mixed population rates, stochastic-only likelihoods, and CBC+stochastic joint
   likelihoods.

@@ -114,7 +114,7 @@ Status meanings:
 | `hierarchical_likelihood_noevents` | `no_event_loglikelihood` | implemented/renamed | Upper-limit likelihood. |
 | selection correction | `InjectionSet` + diagnostics | implemented | `xi`, `N_expected`, injection ESS. |
 | diagnostics | `LikelihoodDiagnostics` | implemented | Structured return type. |
-| stochastic likelihood classes | `Stochastic.stochastic_planned` | planned | First-version exclusion. |
+| stochastic likelihood classes | `Stochastic.stochastic_planned` | planned | Full stochastic likelihood still pending; Omega_GW spectrum helpers are now partially implemented. |
 
 ## simulation.py
 
@@ -131,8 +131,8 @@ Status meanings:
 | Python API | Julia API | Status | Notes |
 | --- | --- | --- | --- |
 | galaxy catalog / EM counterpart APIs | `Catalog.catalog_planned` | planned | Clear planned error. |
-| stochastic background APIs | `Stochastic.stochastic_planned` | planned | Clear planned error. |
-| `Omega_GW` helpers | `OmegaGW.omega_gw_planned` | planned | Clear planned error. |
+| stochastic background APIs | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw` | partial | Energy spectrum, omega weights, and vanilla spectral-siren helper implemented; stochastic likelihoods pending. |
+| `Omega_GW` helpers | `dedf`, `precompute_omega_weights`, `spectral_siren_omega_gw` | partial | Duplicate Python `stochastic.py`/`omega_gw.py` formulas are unified in Julia. |
 | Condor helper functions | none | excluded | Explicitly excluded. |
 | pickle support | none | excluded | Explicitly excluded. |
 | `cupy_pal.py` GPU backend switching | none | excluded | Native Julia CPU first; no Python/CuPy bridge. |

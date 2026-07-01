@@ -90,6 +90,12 @@ end
         @test logpdf(prior, row.x) ≈ row.logpdf rtol=1e-13 atol=1e-13
         @test cdf(prior, row.x) ≈ row.cdf rtol=1e-12 atol=1e-14
     end
+
+    stochastic_ref = CSV.File(joinpath(refdir, "reference_stochastic_dedf.csv")) |> DataFrame
+    freqs = stochastic_ref.freq
+    values = dedf(first(stochastic_ref.Mtot), freqs; eta=first(stochastic_ref.eta), chi=first(stochastic_ref.chi))
+    @test values ≈ stochastic_ref.dEdf rtol=2e-14
+    @test dedf(first(stochastic_ref.Mtot), first(freqs); eta=first(stochastic_ref.eta), chi=first(stochastic_ref.chi)) ≈ first(stochastic_ref.dEdf) rtol=2e-14
 end
 
 @testset "priors and schema" begin
@@ -282,6 +288,36 @@ end
     @test_throws ErrorException Icarogw.OmegaGW.omega_gw_planned()
 end
 
+@testset "stochastic omega gw" begin
+    powers = pn_velocity_powers(60.0, 25.0)
+    @test powers.v1 > 0
+    @test powers.v2 ≈ powers.v1^2
+    @test powers.v3 ≈ powers.v1^3
+
+    rng = MersenneTwister(2026)
+    freqs = [20.0, 40.0, 80.0]
+    weights = precompute_omega_weights(rng, freqs; tmp_min=5.0, tmp_max=12.0, n=8, pn=false)
+    @test weights.frequencies == freqs
+    @test length(weights) == 8
+    @test size(weights.dEdfs) == (8, 3)
+    @test all(isfinite, weights.dEdfs)
+
+    model = SimplePowerLawPopulation(
+        cosmology=FlatLambdaCDM(H0=67.7, Om0=0.308, zmax=10),
+        mass=ConditionalMassDistribution(PowerLaw(5.0, 12.0, -2.0), PowerLaw(5.0, 12.0, 1.0)),
+        redshift_rate=PowerLawRate(0.0),
+        R0=25.0,
+    )
+    omega, diag = spectral_siren_omega_gw(model, weights; return_diagnostics=true)
+    @test length(omega) == length(freqs)
+    @test all(isfinite, omega)
+    @test all(>=(0), omega)
+    @test diag.nweights == 8
+    @test diag.nfrequencies == 3
+    @test diag.max_weight >= diag.min_weight >= 0
+    @test diag.has_nan == false
+end
+
 @testset "migration control files" begin
     repo = dirname(@__DIR__)
     goal_file = joinpath(repo, "2026-07-01-complete-python-science-features.md")
@@ -319,8 +355,8 @@ end
     end
 
     @test any((audit.python_module .== "catalog.py") .& (audit.status .== "missing") .& (audit.fixture_priority .== "high"))
-    @test any((audit.python_module .== "stochastic.py") .& (audit.status .== "missing") .& (audit.fixture_priority .== "high"))
-    @test any((audit.python_module .== "omega_gw.py") .& (audit.status .== "missing") .& (audit.fixture_priority .== "high"))
+    @test any((audit.python_module .== "stochastic.py") .& (audit.status .== "partial") .& (audit.fixture_priority .== "existing"))
+    @test any((audit.python_module .== "omega_gw.py") .& (audit.status .== "partial") .& (audit.fixture_priority .== "existing"))
     @test any((audit.python_module .== "utils.py") .& (audit.status .== "missing"))
     @test any((audit.python_module .== "cupy_pal.py") .& (audit.status .== "excluded"))
 end

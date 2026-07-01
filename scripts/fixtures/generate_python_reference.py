@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import csv
 import importlib
-import math
+import importlib.util
 import pathlib
 import sys
 from typing import Iterable
@@ -24,6 +24,23 @@ DEFAULT_OUT = REPO_ROOT / "test" / "reference"
 
 def _prepend_python_reference() -> None:
     sys.path.insert(0, str(PYTHON_REF))
+
+
+def _load_reference_module(module_name: str, relative_path: str):
+    """Load one Python reference file without importing package ``__init__``.
+
+    The Python package imports catalog/skymap dependencies at package import
+    time. Lightweight fixture suites such as stochastic ``dEdf`` should not
+    require the full catalog stack, so they load their source file directly.
+    """
+
+    path = PYTHON_REF / relative_path
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"could not load module spec for {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _write_rows(path: pathlib.Path, fieldnames: Iterable[str], rows: Iterable[dict]) -> None:
@@ -110,8 +127,7 @@ def generate_stochastic_smoke(outdir: pathlib.Path) -> list[pathlib.Path]:
     fixture to use when implementing the Julia stochastic/OmegaGW module.
     """
 
-    _prepend_python_reference()
-    omega_gw = importlib.import_module("icarogw.omega_gw")
+    omega_gw = _load_reference_module("icarogw_reference_omega_gw", "icarogw/omega_gw.py")
 
     freqs = [10.0, 25.0, 75.0, 150.0]
     values = omega_gw.dEdf(60.0, omega_gw.np.array(freqs), eta=0.24, PN=True, chi=0.2)
@@ -151,7 +167,10 @@ def main() -> int:
         not_yet_available(args.suite)
 
     for path in generated:
-        print(path.relative_to(REPO_ROOT))
+        try:
+            print(path.relative_to(REPO_ROOT))
+        except ValueError:
+            print(path)
     return 0
 
 

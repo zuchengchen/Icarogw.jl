@@ -25,8 +25,10 @@ the Python reference checkout.
 ## Suites
 
 - `core`: tiny conversion fixture used to smoke-test the Python environment.
-- `stochastic-smoke`: deterministic `omega_gw.dEdf` values for the future
-  Julia stochastic/OmegaGW implementation.
+- `stochastic-smoke`: deterministic `omega_gw.dEdf` values for the Julia
+  stochastic/OmegaGW implementation. This suite loads `omega_gw.py` directly
+  instead of importing the Python package, so it does not require catalog
+  dependencies such as `healpy`.
 - `catalog-smoke`: reserved for the catalog migration phase and intentionally
   not implemented yet.
 - `all-small`: all currently implemented small suites.

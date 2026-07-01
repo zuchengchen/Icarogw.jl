@@ -1,15 +1,26 @@
 module OmegaGW
 
-export omega_gw_planned
+using ..Stochastic
 
-"""
-    omega_gw_planned()
+export PNVelocityPowers,
+    OmegaGWWeights,
+    StochasticDiagnostics,
+    pn_velocity_powers,
+    dedf,
+    precompute_omega_weights,
+    spectral_siren_omega_gw,
+    omega_gw_planned
 
-Omega_GW spectral-siren helpers are planned for a later migration phase and are
-intentionally not implemented in the first native Julia version.
-"""
+const PNVelocityPowers = Stochastic.PNVelocityPowers
+const OmegaGWWeights = Stochastic.OmegaGWWeights
+const StochasticDiagnostics = Stochastic.StochasticDiagnostics
+const pn_velocity_powers = Stochastic.pn_velocity_powers
+const dedf = Stochastic.dedf
+const precompute_omega_weights = Stochastic.precompute_omega_weights
+const spectral_siren_omega_gw = Stochastic.spectral_siren_omega_gw
+
 function omega_gw_planned()
-    throw(ErrorException("Omega_GW functionality is planned, not implemented in Icarogw.jl first-version scope."))
+    throw(ErrorException("Stochastic-only likelihoods and catalog/stochastic mixed likelihoods are not implemented yet. The Omega_GW energy-spectrum and vanilla spectral-siren helpers are available."))
 end
 
 end

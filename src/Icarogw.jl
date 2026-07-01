@@ -23,6 +23,7 @@ using .Likelihood
 using .Simulation
 using .Plotting
 using .DynestyInterface
+using .Stochastic
 
 export COST_C,
     AbstractCosmology,
@@ -140,6 +141,13 @@ export COST_C,
     plot_likelihood_diagnostics,
     dynesty_prior_transform,
     dynesty_loglikelihood,
-    dynesty_problem
+    dynesty_problem,
+    PNVelocityPowers,
+    OmegaGWWeights,
+    StochasticDiagnostics,
+    pn_velocity_powers,
+    dedf,
+    precompute_omega_weights,
+    spectral_siren_omega_gw
 
 end
