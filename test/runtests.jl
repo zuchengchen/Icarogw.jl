@@ -1094,8 +1094,13 @@ end
     fixture_script = joinpath(repo, "scripts", "fixtures", "generate_python_reference.py")
     integration_runner = joinpath(repo, "test", "integration", "runtests.jl")
     checklist = joinpath(repo, "docs", "reviews", "module_review_checklist.md")
+    review = joinpath(repo, "docs", "reviews", "full_science_migration_review.md")
+    release_notes = joinpath(repo, "docs", "release_notes.md")
+    science_tutorial = joinpath(repo, "docs", "tutorials", "science_workflows.md")
+    science_example = joinpath(repo, "examples", "science_workflows.jl")
 
-    for path in (goal_file, audit_path, audit_doc, fixture_script, integration_runner, checklist)
+    for path in (goal_file, audit_path, audit_doc, fixture_script, integration_runner, checklist,
+        review, release_notes, science_tutorial, science_example)
         @test isfile(path)
     end
 

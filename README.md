@@ -6,8 +6,8 @@ Julia package is designed around typed models, array-backed data containers,
 log-space likelihood evaluation, sampler-independent parameter schemas, and
 examples that can run without a Python bridge.
 
-This repository is in migration. The current milestone contains a working
-first vertical slice:
+The current milestone covers the Julia-native scientific migration of the
+Python project:
 
 - flat `ΛCDM` cosmology and modified-gravity luminosity-distance wrappers
 - constant-`w` and CPL `w0-wa` flat cosmologies
@@ -75,6 +75,16 @@ julia --project=. examples/dynesty_population_inference.jl
 The Dynesty example uses the local adjacent checkout `../Dynesty.jl` when it is
 available. If that path is missing or incompatible, the example prints a clear
 skip message instead of failing mysteriously.
+
+Run the offline science-workflow smoke example:
+
+```sh
+julia --project=. examples/science_workflows.jl
+```
+
+It creates toy catalog/skymap/stochastic data in temporary files and exercises
+the migrated dark-siren, bright-siren, stochastic/OmegaGW, joint-likelihood,
+and Dynesty-compatible closure paths.
 
 ## Relationship To Python `icarogw`
 

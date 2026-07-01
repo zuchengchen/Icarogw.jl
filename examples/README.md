@@ -21,3 +21,13 @@ available. If the adjacent package is unavailable or incompatible, the script
 prints a skip message.
 
 Optional dependency: local `../Dynesty.jl`.
+
+## `science_workflows.jl`
+
+Runs an offline toy version of the migrated science workflows: catalog
+dark-siren likelihoods, vanilla and skymap EM counterpart rates,
+stochastic/OmegaGW likelihoods, a joint CBC+stochastic likelihood, and
+Dynesty-compatible closure construction. It creates all catalog/skymap data in
+temporary files and does not download public data.
+
+Expected output includes finite log likelihoods for each workflow.

@@ -15,6 +15,7 @@ Set `ICAROGW_INTEGRATION_CACHE` to override the cache location. Set
 `ICAROGW_RUN_PUBLIC_INTEGRATION=1` to opt in to network/data tests once suites
 are registered.
 
-The current runner is a scaffold. Concrete suites should be added as catalog,
-public skymap, stochastic/OmegaGW, and joint-likelihood workflows become ready
-for public-data coverage.
+Public-data suites are intentionally not registered by default yet. Offline
+catalog, skymap, stochastic/OmegaGW, and joint-likelihood workflows are covered
+by unit tests and examples; public-data variants should be added here as
+explicit opt-in suites when stable unauthenticated fixtures are selected.

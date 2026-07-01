@@ -190,12 +190,14 @@ inside likelihood loops. Further performance work should focus on:
 - Python wrapper classes are represented by composable Julia structs rather
   than one mutable class per model family.
 
-## Planned And Excluded Features
+## Future And Excluded Features
 
-Planned after first-version core:
+Future extension points:
 
-- galaxy catalog / dark siren / bright siren workflows
-- mixed stochastic/catalog/EM likelihoods
+- distributed catalog job orchestration
+- collaboration-specific stochastic covariance/data-product APIs
+- catalog/EM stochastic joint likelihoods beyond the Python vanilla
+  stochastic-spectrum path
 - optional additional file migration formats such as NPZ
 
 Explicitly excluded:
